@@ -2,7 +2,7 @@
 
 This repository contains scripts to run trained ppo and rainbow agents. 
 
-The [models](https://github.com/ndrwmlnk/MineRL/tree/master/models) directory containts the trained models for the two different agents.
+The [models](https://github.com/ndrwmlnk/MineRL/tree/master/models) directory contains the trained models for the two different agents.
 By running `test_ppo.py` and `test_rainbow.py` you can test the two agents respectively.
 
 ## Rainbow agent
