@@ -119,9 +119,11 @@ def get_agent(
 
 def act(agent, obs):
         with chainer.using_config('train', False), chainer.no_backprop_mode():
-            action_value = agent.model(
+            action_value, state, advantage = agent.model(
                 agent.batch_states([obs], agent.xp, agent.phi))
-            print("Q-Values: ", action_value.q_values)
+            print("Q-Values: ", action_value.q_values.data[0])
+            print("Advantage: ", advantage)
+            print("State: ", state)
             q = float(action_value.max.array)
             action = cuda.to_cpu(action_value.greedy_actions.array)[0]
 
@@ -130,6 +132,13 @@ def act(agent, obs):
         agent.average_q += (1 - agent.average_q_decay) * q
 
         agent.logger.debug('t:%s q:%s action_value:%s', agent.t, q, action_value)
+
+        # if the state value is high enough, the agent is standing in front of a tree
+        if state >= 450:
+            print("CHOPPING TREE")
+            # execute action 1 to attack and toggle off 'forward'
+            action = 1
+
         return action
 
 
@@ -157,20 +166,21 @@ def main():
 
     agent.load("models/rainbow")
 
-    av_q = 0
+    # av_q = 0
 
     for _ in range(MINERL_MAX_EVALUATION_EPISODES):
         obs = wrapped_env.reset()
+        input("Press ENTER to continue")
         done = False
         netr = 0
         while not done:
             action = act(agent, obs)
             print("Action: ", action)
             # print(agent.get_statistics())
-            new_av_q = agent.get_statistics()[0][1]
-            if new_av_q - av_q >= 0.002:
-                print("CHOP TREE")
-            av_q = new_av_q
+            # new_av_q = agent.get_statistics()[0][1]
+            # if new_av_q - av_q >= 0.002:
+            #     print("CHOP TREE")
+            # av_q = new_av_q
             obs, reward, done, info = wrapped_env.step(action)
                 
             netr += reward
