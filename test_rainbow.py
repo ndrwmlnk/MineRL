@@ -20,6 +20,8 @@ sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 from utility.q_functions import DistributionalDuelingDQN
 from utility.env_wrappers import (SerialDiscreteActionWrapper, MoveAxisWrapper, FrameSkip, FrameStack, ObtainPoVWrapper)
 
+from saliency import create_and_save_saliency_image, make_barplot, ACTIONS
+
 # All the evaluations will be evaluated on MineRLObtainDiamond-v0 environment
 # MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLObtainDiamond-v0')
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
@@ -163,8 +165,11 @@ def main(gpu=-1, sleeping_amount=0.5):
 
         while not done:
             start = time.time()
+            create_and_save_saliency_image(agent, obs, step, reward, netr, action)
+            if step > 0:
+                make_barplot(agent.model.advantage, step)
             action = act(agent, obs)
-            print("Action: ", action)
+            print("Action: ", ACTIONS[action])
             obs, reward, done, info = wrapped_env.step(action)
             netr += reward
             print("Net reward: ", netr)
