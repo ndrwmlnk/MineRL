@@ -156,22 +156,26 @@ def train(agent, wrapped_env):
     start = 0
     rewards = np.array([])
 
-    for i in range(start, TRAINING_EPISODES):
-        obs = wrapped_env.reset()
-        done = False
-        netr = 0
-        reward = 0
-        print(f"===================== EPISODE {i} =====================")
-        while not done:
-            action = agent.act_and_train(obs, reward)
-            obs, reward, done, info = wrapped_env.step(action)
-            netr += reward
-            if agent.t % 1000 == 0:
-                print("Net reward: ", netr)
-        agent.stop_episode_and_train(obs, reward, done)
-        rewards = np.array([*rewards, netr])
-        print(f"===================== END {i} - REWARD {netr} =====================")
-        np.savetxt(Path(out_dir, "rewards.txt"), rewards)
+    try:
+        for i in range(start, TRAINING_EPISODES):
+            obs = wrapped_env.reset()
+            done = False
+            netr = 0
+            reward = 0
+            print(f"===================== EPISODE {i} =====================")
+            while not done:
+                action = agent.act_and_train(obs, reward)
+                obs, reward, done, info = wrapped_env.step(action)
+                netr += reward
+                if agent.t % 1000 == 0:
+                    print("Net reward: ", netr)
+            agent.stop_episode_and_train(obs, reward, done)
+            rewards = np.array([*rewards, netr])
+            print(f"===================== END {i} - REWARD {netr} =====================")
+            np.savetxt(Path(out_dir, "rewards.txt"), rewards)
+            agent.save(out_dir)
+    except KeyboardInterrupt:
+        print("Saving agent")
 
     np.savetxt(Path(out_dir, "rewards.txt"), rewards)
     agent.save(out_dir)
