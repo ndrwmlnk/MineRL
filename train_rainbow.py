@@ -30,12 +30,18 @@ TRAINING_EPISODES = 150
 
 FOUR_FRAMES_AGENT = {
     "RAINBOW_HISTORY": 4,
+    "START_EPSILON": 1.0,
+    "FINAL_EPSILON": 0.01,
+    "DECAY_STEPS": 10 ** 6,
     "ALWAYS_KEYS": ['attack'],
     "REVERSE_KEYS": ['forward'],
     "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint']
 }
 SINGLE_FRAME_AGENT = {
     "RAINBOW_HISTORY": 1,
+    "START_EPSILON": 1.0,
+    "FINAL_EPSILON": 0.25,
+    "DECAY_STEPS": 10 ** 6,
     "ALWAYS_KEYS": ['attack'],
     "REVERSE_KEYS": ['forward'],
     "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint']
@@ -75,7 +81,7 @@ def parse_agent(agent):
 
 def get_agent(
         n_actions, arch, n_input_channels,
-        noisy_net_sigma, final_epsilon, final_exploration_frames, explorer_sample_func,
+        noisy_net_sigma, start_epsilon, final_epsilon, final_exploration_frames, explorer_sample_func,
         lr, adam_eps,
         prioritized, steps, update_interval, replay_capacity, num_step_return,
         agent_type, gpu, gamma, replay_start_size, target_update_interval, clip_delta, batch_accumulator
@@ -94,7 +100,7 @@ def get_agent(
         explorer = chainerrl.explorers.Greedy()
     else:
         explorer = chainerrl.explorers.LinearDecayEpsilonGreedy(
-            1.0, final_epsilon, final_exploration_frames, explorer_sample_func)
+            start_epsilon, final_epsilon, final_exploration_frames, explorer_sample_func)
 
     opt = chainer.optimizers.Adam(alpha=lr, eps=adam_eps)
 
@@ -196,12 +202,11 @@ def main():
     steps = maximum_frames // 4
     agent = get_agent(
         n_actions=wrapped_env.action_space.n, arch='distributed_dueling', n_input_channels=wrapped_env.observation_space.shape[0],
-        noisy_net_sigma=0.5, final_epsilon=0.01,
-        final_exploration_frames=10 ** 6, explorer_sample_func=wrapped_env.action_space.sample,
+        start_epsilon=CONFIG["START_EPSILON"], final_epsilon=CONFIG["FINAL_EPSILON"], final_exploration_frames=CONFIG["DECAY_STEPS"],
+        explorer_sample_func=wrapped_env.action_space.sample,
         lr=0.0000625, adam_eps=0.00015, prioritized=True, steps=steps, update_interval=4,
         replay_capacity=30000, num_step_return=10, agent_type='CategoricalDoubleDQN', gpu=-1, gamma=0.99, replay_start_size=5000,
-        target_update_interval=10000, clip_delta=True, batch_accumulator='mean'
-    )
+        target_update_interval=10000, clip_delta=True, batch_accumulator='mean')
     train(agent, wrapped_env)
     wrapped_env.close()
 
