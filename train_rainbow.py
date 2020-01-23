@@ -201,7 +201,7 @@ def main():
     maximum_frames = 8000000
     steps = maximum_frames // 4
     agent = get_agent(
-        n_actions=wrapped_env.action_space.n, arch='distributed_dueling', n_input_channels=wrapped_env.observation_space.shape[0],
+        n_actions=wrapped_env.action_space.n, arch='distributed_dueling', n_input_channels=wrapped_env.observation_space.shape[0], noisy_net_sigma=None,
         start_epsilon=CONFIG["START_EPSILON"], final_epsilon=CONFIG["FINAL_EPSILON"], final_exploration_frames=CONFIG["DECAY_STEPS"],
         explorer_sample_func=wrapped_env.action_space.sample,
         lr=0.0000625, adam_eps=0.00015, prioritized=True, steps=steps, update_interval=4,
