@@ -19,6 +19,7 @@ ACTIONS = {
 SALIENCY_STD = 4.842388453060134
 FUDGE_FACTOR = 255 / (1.5 * SALIENCY_STD)
 
+LAST_ACTION = None
 
 def mkdir_p(path):
     if not path.exists():
@@ -69,11 +70,11 @@ def make_barplot(score, step):
     ax.legend()
 
     fig.tight_layout()
-    fig.savefig(Path(barplts_dir, f'step{step}_saliency_by_action.png'), dpi=600)
+    fig.savefig(Path(barplts_dir, f'step{step}_advantage_by_action.png'), dpi=600)
     plt.close(fig)
 
 
-def create_and_save_saliency_image(agent, obs, step, s_reward, reward, last_action):
+def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_action, last_action):
     mkdir_p(OUT_PATH)
     obs_dir = Path(OUT_PATH, "observations")
     mkdir_p(obs_dir)
@@ -81,17 +82,17 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, last_acti
     obs = np.array(obs)
     RAINBOW_HISTORY = int(obs.shape[0] / 3)
 
-    if last_action:
-        last_action = ACTIONS[last_action]
-    else:
+    if not last_action:
         last_action = "None"
 
+    suptitle = f"Step: {step} - Step reward: {s_reward} - Tot reward: {reward} - Last action: {last_action} - Next action {next_action}"
+
     squared_fig, squared_axs = plt.subplots(RAINBOW_HISTORY, len(ACTIONS.keys()))
-    squared_fig.suptitle(f"Step: {step} - Step reward: {s_reward} - Tot reward: {reward} - Last action: {last_action}")
+    squared_fig.suptitle(suptitle)
 
     n_imgs = (len(ACTIONS.keys()) * 2)
     fig, axs = plt.subplots(RAINBOW_HISTORY, n_imgs + 1)
-    fig.suptitle(f"Step: {step} - Step reward: {s_reward} - Tot reward: {reward} - Last action: {last_action}")
+    fig.suptitle(suptitle)
 
     for i, img in enumerate(np.split(obs, RAINBOW_HISTORY)):
         base_img = observation_to_rgb(img)

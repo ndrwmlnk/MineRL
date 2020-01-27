@@ -161,14 +161,14 @@ def main(gpu=-1, sleeping_amount=0.5):
         netr = 0
         step = 0
         reward = 0
-        action = None
+        last_action = None
 
         while not done:
             start = time.time()
-            create_and_save_saliency_image(agent, obs, step, reward, netr, action)
-            if step > 0:
-                make_barplot(agent.model.advantage, step)
             action = act(agent, obs)
+            make_barplot(agent.model.advantage, step)
+            create_and_save_saliency_image(agent, obs, step, reward, netr, action, last_action)
+            last_action = action
             print("Action: ", ACTIONS[action])
             obs, reward, done, info = wrapped_env.step(action)
             netr += reward
