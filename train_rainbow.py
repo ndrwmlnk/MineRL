@@ -4,6 +4,7 @@ import minerl
 
 import os
 import sys
+from argparse import ArgumentParser
 from pathlib import Path
 
 import chainer
@@ -181,6 +182,7 @@ def train(agent, wrapped_env):
             np.savetxt(Path(out_dir, "rewards.txt"), rewards)
             agent.save(out_dir)
     except KeyboardInterrupt:
+        agent.stop_episode_and_train(obs, reward, done)
         print("Saving agent")
 
     np.savetxt(Path(out_dir, "rewards.txt"), rewards)
@@ -193,6 +195,10 @@ def main():
     """
     This function will be called for training phase.
     """
+    parser = ArgumentParser()
+    parser.add_argument("--load", "-l", help="Path to model weights")
+    args = parser.parse_args()
+
     chainerrl.misc.set_random_seed(0)
 
     core_env = gym.make(MINERL_GYM_ENV)
@@ -207,6 +213,10 @@ def main():
         lr=0.0000625, adam_eps=0.00015, prioritized=True, steps=steps, update_interval=4,
         replay_capacity=30000, num_step_return=10, agent_type='CategoricalDoubleDQN', gpu=-1, gamma=0.99, replay_start_size=5000,
         target_update_interval=10000, clip_delta=True, batch_accumulator='mean')
+
+    if args.load:
+        agent.load(args.load)
+
     train(agent, wrapped_env)
     wrapped_env.close()
 
