@@ -47,6 +47,15 @@ SINGLE_FRAME_AGENT = {
     "REVERSE_KEYS": ['forward'],
     "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint']
 }
+SINGLE_FRAME_AGENT_ATTACK = {
+    "RAINBOW_HISTORY": 1,
+    "START_EPSILON": 1.0,
+    "FINAL_EPSILON": 0.25,
+    "DECAY_STEPS": 10 ** 6,
+    "ALWAYS_KEYS": [],
+    "REVERSE_KEYS": ['forward'],
+    "EXCLUDE_KEYS": ['attack', 'back', 'left', 'right', 'sneak', 'sprint']
+}
 
 CONFIG = SINGLE_FRAME_AGENT
 
@@ -176,6 +185,9 @@ def train(agent, wrapped_env):
                 netr += reward
                 if agent.t % 1000 == 0:
                     print("Net reward: ", netr)
+                if "error" in info:
+                    print("There was an error in the environment. Starting new episode.")
+                    break
             agent.stop_episode_and_train(obs, reward, done)
             rewards = np.array([*rewards, netr])
             print(f"===================== END {i} - REWARD {netr} =====================")
