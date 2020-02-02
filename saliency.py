@@ -53,24 +53,24 @@ def observation_to_rgb(obs):
     return obs_rgb.astype('uint8')
 
 
-def make_barplot(score, step):
-    barplts_dir = Path(OUT_PATH, "barplots")
+def make_barplot(score, step, name="advantage"):
+    barplts_dir = Path(OUT_PATH, f"{name}_barplots")
     mkdir_p(barplts_dir)
 
     # Thanks to https://matplotlib.org/3.1.1/gallery/lines_bars_and_markers/barchart.html
     labels = list(ACTIONS.values())
     x = np.arange(len(labels))
     fig, ax = plt.subplots()
-    ax.bar(x, score, label='Advantage')
+    ax.bar(x, score, label=name)
 
-    ax.set_title('Advantage by action')
+    ax.set_title(f'{name} by action')
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
     ax.set_ylim([-score.max(), score.max() + (score.max() / 10)])
     ax.legend()
 
     fig.tight_layout()
-    fig.savefig(Path(barplts_dir, f'step{step}_advantage_by_action.png'), dpi=600)
+    fig.savefig(Path(barplts_dir, f'step{step}_{name}_by_action.png'), dpi=600)
     plt.close(fig)
 
 
@@ -101,6 +101,8 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
         axs[i][0].axis('off')
 
         score, squared_score = score_frame(agent, obs, i, OUT_PATH, step, RAINBOW_HISTORY)
+        s = score.sum(axis=2)
+        make_barplot(s, step, "saliency")
         imgs = list(map(lambda a: advantages_on_base_image(a, base_img), score))
 
         for j, adv in enumerate(squared_score):
