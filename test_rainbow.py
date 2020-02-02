@@ -17,8 +17,9 @@ from chainerrl.wrappers.atari_wrappers import ScaledFloatFrame as SFF
 
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
-from utility.q_functions import DistributionalDuelingDQN
+from utility.config import CONFIG
 from utility.env_wrappers import (SerialDiscreteActionWrapper, MoveAxisWrapper, FrameSkip, FrameStack, ObtainPoVWrapper)
+from utility.q_functions import DistributionalDuelingDQN
 
 from saliency import create_and_save_saliency_image, make_barplot, ACTIONS
 
@@ -41,11 +42,11 @@ def wrap_env(env, test):
     # convert hwc -> chw as Chainer requires.
     env = MoveAxisWrapper(env, source=-1, destination=0)
     env = SFF(env)
-    env = FrameStack(env, 4, channel_order='chw')
+    env = FrameStack(env, CONFIG["RAINBOW_HISTORY"], channel_order='chw')
     # wrap env: action...
     env = SerialDiscreteActionWrapper(
         env,
-        always_keys=['attack'], reverse_keys=['forward'], exclude_keys=['back', 'left', 'right', 'sneak', 'sprint'], exclude_noop=False)
+        always_keys=CONFIG["ALWAYS_KEYS"], reverse_keys=CONFIG["REVERSE_KEYS"], exclude_keys=CONFIG["EXCLUDE_KEYS"], exclude_noop=False)
 
     return env
 
@@ -135,6 +136,7 @@ def main(gpu=-1, sleeping_amount=0.5):
     This function will be called for training phase.
     """
     chainerrl.misc.set_random_seed(0)
+    CONFIG.test()
 
     core_env = gym.make(MINERL_GYM_ENV)
     wrapped_env = wrap_env(core_env, test=False)
@@ -145,14 +147,15 @@ def main(gpu=-1, sleeping_amount=0.5):
     steps = maximum_frames // 4
     agent = get_agent(
         n_actions=wrapped_env.action_space.n, arch='distributed_dueling', n_input_channels=wrapped_env.observation_space.shape[0],
-        noisy_net_sigma=0.5, final_epsilon=0.01,
-        final_exploration_frames=10 ** 6, explorer_sample_func=wrapped_env.action_space.sample,
+        noisy_net_sigma=CONFIG["NOISY_NET_SIGMA"], final_epsilon=CONFIG["FINAL_EPSILON"], final_exploration_frames=CONFIG["DECAY_STEPS"],
+        explorer_sample_func=wrapped_env.action_space.sample,
         lr=0.0000625, adam_eps=0.00015, prioritized=True, steps=steps, update_interval=4,
         replay_capacity=30000, num_step_return=10, agent_type='CategoricalDoubleDQN', gpu=gpu, gamma=0.99, replay_start_size=5000,
         target_update_interval=10000, clip_delta=True, batch_accumulator='mean'
     )
 
-    agent.load("models/rainbow")
+    # agent.load("models/rainbow")
+    agent.load("/home/giacomo/Sync/rainbow_1")
 
     for _ in range(MINERL_MAX_EVALUATION_EPISODES):
         obs = wrapped_env.reset()
@@ -167,8 +170,8 @@ def main(gpu=-1, sleeping_amount=0.5):
             start = time.time()
             action = act(agent, obs)
             make_barplot(agent.model.advantage, step)
-            create_and_save_saliency_image(agent, obs, step, reward, netr, action, last_action)
-            last_action = action
+            create_and_save_saliency_image(agent, obs, step, reward, netr, ACTIONS[action], last_action)
+            last_action = ACTIONS[action]
             print("Action: ", ACTIONS[action])
             obs, reward, done, info = wrapped_env.step(action)
             netr += reward

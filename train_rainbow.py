@@ -18,8 +18,9 @@ from chainerrl.wrappers.atari_wrappers import ScaledFloatFrame as SFF
 
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
-from utility.q_functions import DistributionalDuelingDQN
+from utility.config import CONFIG, SINGLE_FRAME_AGENT_ATTACK
 from utility.env_wrappers import (SerialDiscreteActionWrapper, MoveAxisWrapper, FrameSkip, FrameStack, ObtainPoVWrapper)
+from utility.q_functions import DistributionalDuelingDQN
 
 
 # All the evaluations will be evaluated on MineRLObtainDiamond-v0 environment
@@ -28,37 +29,6 @@ MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
 MINERL_MAX_EVALUATION_EPISODES = int(os.getenv('MINERL_MAX_EVALUATION_EPISODES', 5))
 
 TRAINING_EPISODES = 150
-
-FOUR_FRAMES_AGENT = {
-    "RAINBOW_HISTORY": 4,
-    "START_EPSILON": 1.0,
-    "FINAL_EPSILON": 0.01,
-    "DECAY_STEPS": 10 ** 6,
-    "ALWAYS_KEYS": ['attack'],
-    "REVERSE_KEYS": ['forward'],
-    "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint']
-}
-SINGLE_FRAME_AGENT = {
-    "RAINBOW_HISTORY": 1,
-    "START_EPSILON": 1.0,
-    "FINAL_EPSILON": 0.25,
-    "DECAY_STEPS": 10 ** 6,
-    "ALWAYS_KEYS": ['attack'],
-    "REVERSE_KEYS": ['forward'],
-    "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint']
-}
-SINGLE_FRAME_AGENT_ATTACK = {
-    "RAINBOW_HISTORY": 1,
-    "START_EPSILON": 1.0,
-    "FINAL_EPSILON": 0.25,
-    "DECAY_STEPS": 10 ** 6,
-    "ALWAYS_KEYS": [],
-    "REVERSE_KEYS": ['forward'],
-    "EXCLUDE_KEYS": ['attack', 'back', 'left', 'right', 'sneak', 'sprint']
-}
-
-CONFIG = SINGLE_FRAME_AGENT
-
 
 def wrap_env(env, test):
     # wrap env: time limit...
@@ -138,30 +108,6 @@ def get_agent(
     return agent
 
 
-def act(agent, obs):
-    action_value = agent.model(
-        agent.batch_states([obs], agent.xp, agent.phi))
-    state = agent.model.state
-    print("Q-Values: ", action_value.q_values.data[0])
-    print("Advantage: ", agent.model.advantage)
-    print("State: ", state)
-    q = float(action_value.max.array)
-    action = cuda.to_cpu(action_value.greedy_actions.array)[0]
-
-    # Update stats
-    agent.average_q *= agent.average_q_decay
-    agent.average_q += (1 - agent.average_q_decay) * q
-
-    agent.logger.debug('t:%s q:%s action_value:%s', agent.t, q, action_value)
-
-    # if the state value is high enough, the agent is standing in front of a tree
-    if state >= 450:
-        print("CHOPPING TREE")
-        # execute action 1 to attack and toggle off 'forward'
-        action = 1
-    return action
-
-
 def train(agent, wrapped_env):
     """
     This function will be called for training phase.
@@ -169,30 +115,45 @@ def train(agent, wrapped_env):
     out_dir = Path(os.environ["HOME"], f"rainbow_{CONFIG['RAINBOW_HISTORY']}")
     if not out_dir.exists():
         out_dir.mkdir()
-    start = 0
-    rewards = np.array([])
 
+    i = 0
+    rewards = np.array([])
+    ep = 0
+    obs = wrapped_env.reset()
+    done = False
+    info = {}
+    netr = 0
+    reward = 0
+
+    maximum_frames = 8000000
+    steps = maximum_frames // 4
+
+    # record number of steps for each training episode and the cumulative number of step (total)
     try:
-        for i in range(start, TRAINING_EPISODES):
-            obs = wrapped_env.reset()
-            done = False
-            netr = 0
-            reward = 0
-            print(f"===================== EPISODE {i} =====================")
-            while not done:
-                action = agent.act_and_train(obs, reward)
-                obs, reward, done, info = wrapped_env.step(action)
-                netr += reward
-                if agent.t % 1000 == 0:
-                    print("Net reward: ", netr)
-                if "error" in info:
-                    print("There was an error in the environment. Starting new episode.")
-                    break
-            agent.stop_episode_and_train(obs, reward, done)
-            rewards = np.array([*rewards, netr])
-            print(f"===================== END {i} - REWARD {netr} =====================")
-            np.savetxt(Path(out_dir, "rewards.txt"), rewards)
-            agent.save(out_dir)
+        while i < steps:
+            if done or "error" in info:
+                agent.stop_episode_and_train(obs, reward, done)
+                rewards = np.array([*rewards, (i, netr)])
+                ep += 1
+                print(f"===================== END {i} - REWARD {netr} =====================")
+                np.savetxt(Path(out_dir, "rewards.txt"), rewards)
+                agent.save(out_dir)
+
+                obs = wrapped_env.reset()
+                done = False
+                netr = 0
+                reward = 0
+                print(f"===================== EPISODE {i} =====================")
+
+            action = agent.act_and_train(obs, reward)
+            obs, reward, done, info = wrapped_env.step(action)
+            netr += reward
+
+            if agent.t % 1000 == 0:
+                rewards = np.array([*rewards, (i, netr)])
+                print("Net reward: ", netr)
+            i += 1
+
     except KeyboardInterrupt:
         agent.stop_episode_and_train(obs, reward, done)
         print("Saving agent")
@@ -203,27 +164,24 @@ def train(agent, wrapped_env):
     print("Done!")
 
 
-def main():
+def main(args):
     """
     This function will be called for training phase.
     """
-    parser = ArgumentParser()
-    parser.add_argument("--load", "-l", help="Path to model weights")
-    args = parser.parse_args()
-
     chainerrl.misc.set_random_seed(0)
+    CONFIG.apply(SINGLE_FRAME_AGENT_ATTACK)
 
     core_env = gym.make(MINERL_GYM_ENV)
     wrapped_env = wrap_env(core_env, test=False)
 
     maximum_frames = 8000000
-    steps = maximum_frames // 4
+    steps = maximum_frames // CONFIG["HISTORY"]
     agent = get_agent(
         n_actions=wrapped_env.action_space.n, arch='distributed_dueling', n_input_channels=wrapped_env.observation_space.shape[0], noisy_net_sigma=None,
         start_epsilon=CONFIG["START_EPSILON"], final_epsilon=CONFIG["FINAL_EPSILON"], final_exploration_frames=CONFIG["DECAY_STEPS"],
         explorer_sample_func=wrapped_env.action_space.sample,
         lr=0.0000625, adam_eps=0.00015, prioritized=True, steps=steps, update_interval=4,
-        replay_capacity=30000, num_step_return=10, agent_type='CategoricalDoubleDQN', gpu=-1, gamma=0.99, replay_start_size=5000,
+        replay_capacity=30000, num_step_return=10, agent_type='CategoricalDoubleDQN', gpu=args.gpu, gamma=0.99, replay_start_size=5000,
         target_update_interval=10000, clip_delta=True, batch_accumulator='mean')
 
     if args.load:
@@ -234,4 +192,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = ArgumentParser()
+    parser.add_argument("--gpu", default=-1, action="store_const", const=0)
+    parser.add_argument("--load", "-l", help="Path to model weights")
+    main(parser.parse_args())

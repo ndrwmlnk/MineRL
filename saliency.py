@@ -4,26 +4,28 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from chainer import cuda
 from PIL import Image
-from skimage import color, img_as_float, data
+from skimage import color
 from skimage.filters import gaussian
 
 ACTIONS = {
     0: "FWD_ATT",
     1: "STOP",
     2: "JUMP",
-    3: "LOOK_L",
-    4: "LOOK_R"
+    3: "LEFT",
+    4: "RIGHT"
 }
 
 SALIENCY_STD = 4.842388453060134
-FUDGE_FACTOR = 255 / (1.5 * SALIENCY_STD)
+SALIENCY_MAX = (1.5 * SALIENCY_STD)
+FUDGE_FACTOR = 255 / SALIENCY_MAX
 
 LAST_ACTION = None
 
+
 def mkdir_p(path):
-    if not path.exists():
-        path.mkdir()
+    path.mkdir(parents=True, exist_ok=True)
 
 
 def save_image(array, path):
@@ -32,6 +34,7 @@ def save_image(array, path):
 
 
 OUT_PATH = Path(".", "saliency")
+mkdir_p(OUT_PATH)
 
 
 def chw_to_hwc(array):
@@ -54,6 +57,7 @@ def observation_to_rgb(obs):
 
 
 def make_barplot(score, step, name="advantage"):
+    score = cuda.to_cpu(score)
     barplts_dir = Path(OUT_PATH, f"{name}_barplots")
     mkdir_p(barplts_dir)
 
@@ -66,6 +70,10 @@ def make_barplot(score, step, name="advantage"):
     ax.set_title(f'{name} by action')
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
+    # if name == "saliency":
+    #     ax.set_ylim([-SALIENCY_MAX, SALIENCY_MAX])
+    # else:
+    #     ax.set_ylim([-score.max(), score.max() + (score.max() / 10)])
     ax.set_ylim([-score.max(), score.max() + (score.max() / 10)])
     ax.legend()
 
@@ -75,7 +83,6 @@ def make_barplot(score, step, name="advantage"):
 
 
 def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_action, last_action):
-    mkdir_p(OUT_PATH)
     obs_dir = Path(OUT_PATH, "observations")
     mkdir_p(obs_dir)
 
@@ -85,7 +92,7 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
     if not last_action:
         last_action = "None"
 
-    suptitle = f"Step: {step} - Step reward: {s_reward} - Tot reward: {reward} - Last action: {last_action} - Next action {next_action}"
+    suptitle = f"Step: {step}, Step reward: {s_reward}, Tot reward: {reward}, Last: {last_action}, Next: {next_action}"
 
     squared_fig, squared_axs = plt.subplots(RAINBOW_HISTORY, len(ACTIONS.keys()))
     squared_fig.suptitle(suptitle)
@@ -95,29 +102,11 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
     fig.suptitle(suptitle)
 
     for i, img in enumerate(np.split(obs, RAINBOW_HISTORY)):
+        score, squared_score = score_frame(agent, obs, i, OUT_PATH, step, RAINBOW_HISTORY)
+
         base_img = observation_to_rgb(img)
         save_image(base_img, Path(obs_dir, f"step{step}_obs{i}.png"))
-        axs[i][0].imshow(base_img)
-        axs[i][0].axis('off')
-
-        score, squared_score = score_frame(agent, obs, i, OUT_PATH, step, RAINBOW_HISTORY)
-        s = score.sum(axis=2)
-        make_barplot(s, step, "saliency")
-        imgs = list(map(lambda a: advantages_on_base_image(a, base_img), score))
-
-        for j, adv in enumerate(squared_score):
-            squared_axs[0][j].set_title(ACTIONS[j])
-            squared_axs[i][j].imshow(_saliency_on_base_image(adv, base_img))
-            squared_axs[i][j].axis('off')
-
-        for j in range(1, n_imgs, 2):
-            k = int((j - 1) / 2)
-            if ((j - 1) % 2) == 0:
-                axs[0][j].set_title(ACTIONS[k])
-            axs[i][j].imshow(imgs[k][1])
-            axs[i][j].axis('off')
-            axs[i][j + 1].imshow(imgs[k][0], cmap='gray', vmin=0, vmax=255)
-            axs[i][j + 1].axis('off')
+        plot_comparisons()
 
     scores_dir = Path(OUT_PATH, "saliency")
     mkdir_p(scores_dir)
@@ -130,7 +119,35 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
     plt.close(squared_fig)
 
 
-def _saliency_on_base_image(saliency, base_img, channel=0, sigma=0):
+def plot_comparisons(axs, squared_axs, base_img, score, squared_score, step, n_imgs):
+    axs[0].imshow(base_img)
+    axs[0].axis('off')
+
+    make_barplot(np.array(list(map(lambda arr: arr.sum(), score))), step, name="saliency")
+    imgs = list(map(lambda a: advantages_on_base_image_RGB(a, base_img), score))
+
+    for j, adv in enumerate(squared_score):
+        squared_axs[j].set_title(ACTIONS[j])
+        squared_sal_map = _saliency_on_base_image(adv, base_img, f"{step}_obs{i}_{ACTIONS[j]}")
+
+        squared_axs[j].imshow(squared_sal_map)
+        squared_axs[j].axis('off')
+
+    for j in range(1, n_imgs, 2):
+        k = int((j - 1) / 2)
+        if ((j - 1) % 2) == 0:
+            axs[0][j].set_title(ACTIONS[k])
+        sal_map = imgs[k][1]
+        maps_dir = Path(OUT_PATH, "maps", "saliency")
+        mkdir_p(maps_dir)
+        save_image(sal_map, Path(maps_dir, f"step{step}_obs{i}_{ACTIONS[k]}.png"))
+        axs[j].imshow(sal_map)
+        axs[j].axis('off')
+        axs[j + 1].imshow(imgs[k][0])
+        axs[j + 1].axis('off')
+
+
+def _saliency_on_base_image(saliency, base_img, step, channel=0, sigma=0):
     # base_img shape is intended to be (height, width, channel)
     size = base_img.shape[0:2]  # height, width
     saliency_max = saliency.max()
@@ -144,6 +161,10 @@ def _saliency_on_base_image(saliency, base_img, channel=0, sigma=0):
 
     img = base_img.astype("uint16")
     img[:, :, channel] += saliency.astype("uint16")
+
+    squared_maps_dir = Path(OUT_PATH, "maps", "squared_saliency")
+    mkdir_p(squared_maps_dir)
+    save_image(saliency.astype("uint8"), Path(squared_maps_dir, f"step{step}.png"))
     return img.astype("uint8")
 
 
@@ -165,6 +186,7 @@ def paste_saliency_on_base_image(saliency, base_img):
     img_hsv[..., 1] = color_mask_hsv[..., 1] * alpha
 
     return color.hsv2rgb(img_hsv)
+
 
 # GRAYSCALE
 def advantages_on_base_image(saliency, base_img, sigma=0):
@@ -269,8 +291,8 @@ def score_frame(agent, obs, idx, out_dir, step, n_frames, radius=5, density=10):
             perturbed_imgs = occlude_ith_frame(obs, idx, mask, pix_dir, step, n_frames)
 
             agent.model(agent.batch_states([perturbed_imgs.astype(np.float32)], agent.xp, agent.phi))
-            perturbed_advantage = agent.model.advantage
-            diff = advantage_values - perturbed_advantage
+
+            diff = cuda.to_cpu(advantage_values) - cuda.to_cpu(agent.model.advantage)
             advantages_squared[int(j / density), int(i / density)] = np.power(diff, 2)
             advantages_scores[int(j / density), int(i / density)] = diff
 
@@ -282,7 +304,7 @@ def score_frame(agent, obs, idx, out_dir, step, n_frames, radius=5, density=10):
     # Index scores by action
     advantages_scores = np.swapaxes(advantages_scores, 0, 2)
     advantages_squared = np.swapaxes(advantages_squared, 0, 2)
-    return map(resize_and_interpolate, advantages_scores), map(resize_and_interpolate, advantages_squared)
+    return list(map(resize_and_interpolate, advantages_scores)), map(resize_and_interpolate, advantages_squared)
 
 
 def _get_mask(center, size, radius=5):

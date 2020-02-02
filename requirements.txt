@@ -3,3 +3,4 @@ minerl==0.2.9
 scikit-image==0.16.2
 Pillow==6.2.1
 numpy==1.18.1
+cupy==7.1.1
