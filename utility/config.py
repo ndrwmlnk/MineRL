@@ -1,6 +1,12 @@
 import json
 import copy
 
+
+# Action 0: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 1), ('camera', array([0., 0.], dtype=float32))])
+# Action 1: OrderedDict([('forward', 0), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 1), ('camera', array([0., 0.], dtype=float32))])
+# Action 2: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 1), ('sneak', 0), ('sprint', 0), ('attack', 1), ('camera', array([0., 0.], dtype=float32))])
+# Action 3: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 1), ('camera', array([  0., -10.], dtype=float32))])
+# Action 4: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 1), ('camera', array([ 0., 10.], dtype=float32))])
 FOUR_FRAMES_AGENT = {
     "train": {
         "RAINBOW_HISTORY": 4,
@@ -9,11 +15,23 @@ FOUR_FRAMES_AGENT = {
         "DECAY_STEPS": 10 ** 6,
         "ALWAYS_KEYS": ['attack'],
         "REVERSE_KEYS": ['forward'],
-        "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint']
+        "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint'],
+        "ACTION_SPACE": {
+            0: "FWD_ATTACK",
+            1: "STOP",
+            2: "FWD_JUMP",
+            3: "FWD_LEFT",
+            4: "FWD_RIGHT",
+        }
     },
     "test": {"NOISY_NET_SIGMA": 0.5}
 }
 
+# Action 0: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 1), ('camera', array([0., 0.], dtype=float32))])
+# Action 1: OrderedDict([('forward', 0), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 1), ('camera', array([0., 0.], dtype=float32))])
+# Action 2: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 1), ('sneak', 0), ('sprint', 0), ('attack', 1), ('camera', array([0., 0.], dtype=float32))])
+# Action 3: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 1), ('camera', array([  0., -10.], dtype=float32))])
+# Action 4: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 1), ('camera', array([ 0., 10.], dtype=float32))])
 SINGLE_FRAME_AGENT = {
     "train": {
         "RAINBOW_HISTORY": 1,
@@ -22,11 +40,26 @@ SINGLE_FRAME_AGENT = {
         "DECAY_STEPS": 10 ** 6,
         "ALWAYS_KEYS": ['attack'],
         "REVERSE_KEYS": ['forward'],
-        "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint']
+        "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint'],
+        "ACTION_SPACE": {
+            0: "FWD_ATTACK",
+            1: "STOP",
+            2: "FWD_JUMP",
+            3: "FWD_LEFT",
+            4: "FWD_RIGHT",
+        }
     },
     "test": {"NOISY_NET_SIGMA": 0.5}
 }
-SINGLE_FRAME_AGENT_ATTACK = {
+
+# Action 0: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 0), ('camera', array([0., 0.], dtype=float32))])
+# Action 1: OrderedDict([('forward', 0), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 0), ('camera', array([0., 0.], dtype=float32))])
+# Action 2: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 1), ('sneak', 0), ('sprint', 0), ('attack', 0), ('camera', array([0., 0.], dtype=float32))])
+# Action 3: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 1), ('camera', array([0., 0.], dtype=float32))])
+# Action 4: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 0), ('camera', array([  0., -10.], dtype=float32))])
+# Action 5: OrderedDict([('forward', 1), ('back', 0), ('left', 0), ('right', 0), ('jump', 0), ('sneak', 0), ('sprint', 0), ('attack', 0), ('camera', array([ 0., 10.], dtype=float32))])
+
+SINGLE_FRAME_AGENT_ATTACK_ALWAYS_FWD = {
     "train": {
         "RAINBOW_HISTORY": 1,
         "START_EPSILON": 1.0,
@@ -34,7 +67,16 @@ SINGLE_FRAME_AGENT_ATTACK = {
         "DECAY_STEPS": 10 ** 6,
         "ALWAYS_KEYS": [],
         "REVERSE_KEYS": ['forward'],
-        "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint']},
+        "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint'],
+        "ACTION_SPACE": {
+            0: "FWD",
+            1: "NOOP",
+            2: "FWD_ATT",
+            3: "FWD_JUMP",
+            4: "FWD_LEFT",
+            5: "FWD_RIGHT",
+        }
+    },
     "test": {"NOISY_NET_SIGMA": 0.5}
 }
 
@@ -43,6 +85,8 @@ class Configuration(dict):
     def __init__(self, conf):
         Configuration.is_valid(conf)
         dict.__init__(self, {})
+        self.trainc = {}
+        self.testc = {}
         self.apply(conf)
 
     @staticmethod
@@ -79,7 +123,7 @@ class Configuration(dict):
         self.update(self.trainc)
 
     def test(self):
-        self.apply(self.testc)
+        self.update(self.testc)
 
 
 CONFIG = Configuration(FOUR_FRAMES_AGENT)

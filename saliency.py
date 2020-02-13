@@ -9,13 +9,9 @@ from PIL import Image
 from skimage import color
 from skimage.filters import gaussian
 
-ACTIONS = {
-    0: "FWD_ATT",
-    1: "STOP",
-    2: "JUMP",
-    3: "LEFT",
-    4: "RIGHT"
-}
+from utility.config import CONFIG
+
+ACTIONS = CONFIG["ACTION_SPACE"]
 
 SALIENCY_STD = 4.842388453060134
 SALIENCY_MAX = (1.5 * SALIENCY_STD)
@@ -70,10 +66,6 @@ def make_barplot(score, step, name="advantage"):
     ax.set_title(f'{name} by action')
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
-    # if name == "saliency":
-    #     ax.set_ylim([-SALIENCY_MAX, SALIENCY_MAX])
-    # else:
-    #     ax.set_ylim([-score.max(), score.max() + (score.max() / 10)])
     ax.set_ylim([-score.max(), score.max() + (score.max() / 10)])
     ax.legend()
 
@@ -87,7 +79,7 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
     mkdir_p(obs_dir)
 
     obs = np.array(obs)
-    RAINBOW_HISTORY = int(obs.shape[0] / 3)
+    RAINBOW_HISTORY = CONFIG["RAINBOW_HISTORY"]
 
     if not last_action:
         last_action = "None"
@@ -106,7 +98,51 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
 
         base_img = observation_to_rgb(img)
         save_image(base_img, Path(obs_dir, f"step{step}_obs{i}.png"))
-        plot_comparisons()
+
+        if RAINBOW_HISTORY > 1:
+            axs[i][0].imshow(base_img)
+            axs[i][0].axis('off')
+        else:
+            axs[0].imshow(base_img)
+            axs[0].axis('off')
+
+        make_barplot(np.array(list(map(lambda arr: arr.sum(), score))), step, name="saliency")
+        imgs = list(map(lambda a: advantages_on_base_image_RGB(a, base_img), score))
+
+        for j, adv in enumerate(squared_score):
+            squared_sal_map = _saliency_on_base_image(adv, base_img, f"{step}_obs{i}_{ACTIONS[j]}")
+
+            if RAINBOW_HISTORY > 1:
+                squared_axs[i][j].set_title(ACTIONS[j])
+                squared_axs[i][j].imshow(squared_sal_map)
+                squared_axs[i][j].axis('off')
+            else:
+                squared_axs[j].set_title(ACTIONS[j])
+                squared_axs[j].imshow(squared_sal_map)
+                squared_axs[j].axis('off')
+
+        for j in range(1, n_imgs, 2):
+            k = int((j - 1) / 2)
+            if ((j - 1) % 2) == 0:
+                if RAINBOW_HISTORY > 1:
+                    axs[0][j].set_title(ACTIONS[k])
+                else:
+                    axs[j].set_title(ACTIONS[k])
+            sal_map = imgs[k][1]
+            maps_dir = Path(OUT_PATH, "maps", "saliency")
+            mkdir_p(maps_dir)
+            save_image(sal_map, Path(maps_dir, f"step{step}_obs{i}_{ACTIONS[k]}.png"))
+            if RAINBOW_HISTORY > 1:
+                axs[i][j].imshow(sal_map)
+                axs[i][j].axis('off')
+                axs[i][j + 1].imshow(imgs[k][0])
+                axs[i][j + 1].axis('off')
+            else:
+                axs[j].imshow(sal_map)
+                axs[j].axis('off')
+                axs[j + 1].imshow(imgs[k][0])
+                axs[j + 1].axis('off')
+
 
     scores_dir = Path(OUT_PATH, "saliency")
     mkdir_p(scores_dir)
@@ -117,34 +153,6 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
     mkdir_p(squared_dir)
     squared_fig.savefig(Path(squared_dir, f'step{step}_squared_saliency.png'), dpi=600)
     plt.close(squared_fig)
-
-
-def plot_comparisons(axs, squared_axs, base_img, score, squared_score, step, n_imgs):
-    axs[0].imshow(base_img)
-    axs[0].axis('off')
-
-    make_barplot(np.array(list(map(lambda arr: arr.sum(), score))), step, name="saliency")
-    imgs = list(map(lambda a: advantages_on_base_image_RGB(a, base_img), score))
-
-    for j, adv in enumerate(squared_score):
-        squared_axs[j].set_title(ACTIONS[j])
-        squared_sal_map = _saliency_on_base_image(adv, base_img, f"{step}_obs{i}_{ACTIONS[j]}")
-
-        squared_axs[j].imshow(squared_sal_map)
-        squared_axs[j].axis('off')
-
-    for j in range(1, n_imgs, 2):
-        k = int((j - 1) / 2)
-        if ((j - 1) % 2) == 0:
-            axs[0][j].set_title(ACTIONS[k])
-        sal_map = imgs[k][1]
-        maps_dir = Path(OUT_PATH, "maps", "saliency")
-        mkdir_p(maps_dir)
-        save_image(sal_map, Path(maps_dir, f"step{step}_obs{i}_{ACTIONS[k]}.png"))
-        axs[j].imshow(sal_map)
-        axs[j].axis('off')
-        axs[j + 1].imshow(imgs[k][0])
-        axs[j + 1].axis('off')
 
 
 def _saliency_on_base_image(saliency, base_img, step, channel=0, sigma=0):

@@ -18,7 +18,7 @@ from chainerrl.wrappers.atari_wrappers import ScaledFloatFrame as SFF
 
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
-from utility.config import CONFIG, SINGLE_FRAME_AGENT_ATTACK
+from utility.config import CONFIG, SINGLE_FRAME_AGENT_ATTACK_ALWAYS_FWD
 from utility.env_wrappers import (SerialDiscreteActionWrapper, MoveAxisWrapper, FrameSkip, FrameStack, ObtainPoVWrapper)
 from utility.q_functions import DistributionalDuelingDQN
 
@@ -169,7 +169,7 @@ def main(args):
     This function will be called for training phase.
     """
     chainerrl.misc.set_random_seed(0)
-    CONFIG.apply(SINGLE_FRAME_AGENT_ATTACK)
+    CONFIG.apply({})
 
     core_env = gym.make(MINERL_GYM_ENV)
     wrapped_env = wrap_env(core_env, test=False)
