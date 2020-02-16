@@ -150,10 +150,11 @@ class DistributionalDuelingDQN(
         # State value
         ys = F.reshape(self.v_stream(h_v), (batch_size, 1, self.n_atoms))
         ya, ys = F.broadcast(ya, ys)
-        q = F.softmax(ya + ys, axis=2)
+        q = chainerrl.action_value.DistributionalDiscreteActionValue(F.softmax(ya + ys, axis=2), self.z_values)
         self.advantage = F.sum(F.scale(ya, self.z_values, axis=2), axis=2).data[0]
         self.state = F.sum(F.scale(ys, self.z_values, axis=2), axis=2).data[0][0]
-        return chainerrl.action_value.DistributionalDiscreteActionValue(q, self.z_values)
+        self.q_value = q.q_values.data[0]
+        return q
 
 
 class CNNBranchingQFunction(chainer.Chain, chainerrl.q_function.StateQFunction):

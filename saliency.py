@@ -93,8 +93,11 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
     fig, axs = plt.subplots(RAINBOW_HISTORY, n_imgs + 1)
     fig.suptitle(suptitle)
 
+    state_fig, state_axs = plt.subplots(RAINBOW_HISTORY, 3)
+    state_fig.suptitle(suptitle)
+
     for i, img in enumerate(np.split(obs, RAINBOW_HISTORY)):
-        score, squared_score = score_frame(agent, obs, i, OUT_PATH, step, RAINBOW_HISTORY)
+        score, squared_score, state_score = score_frame(agent, obs, i, OUT_PATH, step, RAINBOW_HISTORY)
 
         base_img = observation_to_rgb(img)
         save_image(base_img, Path(obs_dir, f"step{step}_obs{i}.png"))
@@ -107,10 +110,13 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
             axs[0].axis('off')
 
         make_barplot(np.array(list(map(lambda arr: arr.sum(), score))), step, name="saliency")
-        imgs = list(map(lambda a: advantages_on_base_image_RGB(a, base_img), score))
+        imgs = list(map(lambda a: saliency_on_base_image(a, base_img), score))
 
         for j, adv in enumerate(squared_score):
-            squared_sal_map = _saliency_on_base_image(adv, base_img, f"{step}_obs{i}_{ACTIONS[j]}")
+            squared_sal_map, saliency = squared_saliency_on_base_image(adv, base_img, f"{step}_obs{i}_{ACTIONS[j]}")
+            squared_maps_dir = Path(OUT_PATH, "maps", "advantages", "squared_saliency")
+            mkdir_p(squared_maps_dir)
+            save_image(saliency, Path(squared_maps_dir, f"step{step}.png"))
 
             if RAINBOW_HISTORY > 1:
                 squared_axs[i][j].set_title(ACTIONS[j])
@@ -129,7 +135,7 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
                 else:
                     axs[j].set_title(ACTIONS[k])
             sal_map = imgs[k][1]
-            maps_dir = Path(OUT_PATH, "maps", "saliency")
+            maps_dir = Path(OUT_PATH, "maps", "advantages", "saliency")
             mkdir_p(maps_dir)
             save_image(sal_map, Path(maps_dir, f"step{step}_obs{i}_{ACTIONS[k]}.png"))
             if RAINBOW_HISTORY > 1:
@@ -143,6 +149,33 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
                 axs[j + 1].imshow(imgs[k][0])
                 axs[j + 1].axis('off')
 
+        if RAINBOW_HISTORY > 1:
+            state_axs[i][0].imshow(base_img)
+            state_axs[i][0].axis('off')
+        else:
+            state_axs[0].imshow(base_img)
+            state_axs[0].axis('off')
+
+        state_sal_map, saliency = saliency_on_base_image(state_score, base_img)
+        state_sal_maps_dir = Path(OUT_PATH, "maps", "state")
+        mkdir_p(state_sal_maps_dir)
+        save_image(saliency, Path(state_sal_maps_dir, f"step{step}_obs{i}.png"))
+
+        if RAINBOW_HISTORY > 1:
+            state_axs[i][1].imshow(saliency)
+            state_axs[i][1].axis('off')
+            state_axs[i][2].imshow(state_sal_map)
+            state_axs[i][2].axis('off')
+        else:
+            state_axs[1].imshow(saliency)
+            state_axs[1].axis('off')
+            state_axs[2].imshow(state_sal_map)
+            state_axs[2].axis('off')
+
+    state_dir = Path(OUT_PATH, "state_saliency")
+    mkdir_p(state_dir)
+    state_fig.savefig(Path(state_dir, f'step{step}_saliency.png'), dpi=600)
+    plt.close(state_fig)
 
     scores_dir = Path(OUT_PATH, "saliency")
     mkdir_p(scores_dir)
@@ -155,7 +188,7 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
     plt.close(squared_fig)
 
 
-def _saliency_on_base_image(saliency, base_img, step, channel=0, sigma=0):
+def squared_saliency_on_base_image(saliency, base_img, step, channel=0, sigma=0):
     # base_img shape is intended to be (height, width, channel)
     size = base_img.shape[0:2]  # height, width
     saliency_max = saliency.max()
@@ -170,59 +203,12 @@ def _saliency_on_base_image(saliency, base_img, step, channel=0, sigma=0):
     img = base_img.astype("uint16")
     img[:, :, channel] += saliency.astype("uint16")
 
-    squared_maps_dir = Path(OUT_PATH, "maps", "squared_saliency")
-    mkdir_p(squared_maps_dir)
-    save_image(saliency.astype("uint8"), Path(squared_maps_dir, f"step{step}.png"))
-    return img.astype("uint8")
-
-
-def paste_saliency_on_base_image(saliency, base_img):
-    # https://stackoverflow.com/questions/9193603/applying-a-coloured-overlay-to-an-image-in-either-pil-or-imagemagik/9204506#9204506
-    base_img = np.array(Image.fromarray(base_img, mode="RGB").convert("L")).astype(np.float32)
-    alpha = 1
-    # Construct RGB version of grey-level image
-    img_color = np.dstack((base_img, base_img, base_img))
-
-    # Convert the input image and color mask to Hue Saturation Value (HSV)
-    # colorspace
-    img_hsv = color.rgb2hsv(img_color)
-    color_mask_hsv = color.rgb2hsv(saliency)
-
-    # Replace the hue and saturation of the original image
-    # with that of the color mask
-    img_hsv[..., 0] = color_mask_hsv[..., 0]
-    img_hsv[..., 1] = color_mask_hsv[..., 1] * alpha
-
-    return color.hsv2rgb(img_hsv)
-
-
-# GRAYSCALE
-def advantages_on_base_image(saliency, base_img, sigma=0):
-    export_saliency_trace(saliency)
-    red = 0
-    blue = 2
-    size = base_img.shape[0:2]  # height, width
-    saliency = np.array(Image.fromarray(saliency).resize(size, resample=Image.BILINEAR)).astype(np.float32)
-    if sigma != 0:
-        saliency = gaussian(saliency, sigma=sigma)
-
-    saliency = FUDGE_FACTOR * saliency
-    map = np.zeros(base_img.shape).astype("uint16")
-
-    for h in range(size[0]):
-        for w in range(size[1]):
-            pixel_saliency = saliency[h, w]
-            if pixel_saliency > 0:
-                map[h, w, red] = pixel_saliency
-            elif pixel_saliency < 0:
-                map[h, w, blue] = abs(pixel_saliency)
-
-    return np.array(paste_saliency_on_base_image(map, base_img)).astype("uint8"), map.astype("uint8")
+    return img.astype("uint8"), saliency.astype("uint8")
 
 
 # RBG
-def advantages_on_base_image_RGB(saliency, base_img, sigma=0):
-    export_saliency_trace(saliency)
+def saliency_on_base_image(saliency, base_img, sigma=0):
+    # export_saliency_trace(saliency)
     red = 0
     blue = 2
     size = base_img.shape[0:2]  # height, width
@@ -278,11 +264,14 @@ def score_frame(agent, obs, idx, out_dir, step, n_frames, radius=5, density=10):
 
     agent.model(agent.batch_states([obs], agent.xp, agent.phi))
     advantage_values = agent.model.advantage
+    state_values = agent.model.state
 
     advantages_squared = np.zeros(
         (int(width / density) + 1, int(height / density) + 1, advantage_values.shape[0]))
     advantages_scores = np.zeros(
         (int(width / density) + 1, int(height / density) + 1, advantage_values.shape[0]))
+    state_scores = np.zeros(
+        (int(width / density) + 1, int(height / density) + 1))
 
     for i in range(0, height, density):
         for j in range(0, width, density):
@@ -300,9 +289,12 @@ def score_frame(agent, obs, idx, out_dir, step, n_frames, radius=5, density=10):
 
             agent.model(agent.batch_states([perturbed_imgs.astype(np.float32)], agent.xp, agent.phi))
 
-            diff = cuda.to_cpu(advantage_values) - cuda.to_cpu(agent.model.advantage)
-            advantages_squared[int(j / density), int(i / density)] = np.power(diff, 2)
-            advantages_scores[int(j / density), int(i / density)] = diff
+            adv_diff = cuda.to_cpu(advantage_values) - cuda.to_cpu(agent.model.advantage)
+            advantages_squared[int(j / density), int(i / density)] = np.power(adv_diff, 2)
+            advantages_scores[int(j / density), int(i / density)] = adv_diff
+
+            state_diff = cuda.to_cpu(state_values) - cuda.to_cpu(agent.model.state)
+            state_scores[int(j / density), int(i / density)] = state_diff
 
     def resize_and_interpolate(scores):
         max_score = scores.max()
@@ -312,7 +304,7 @@ def score_frame(agent, obs, idx, out_dir, step, n_frames, radius=5, density=10):
     # Index scores by action
     advantages_scores = np.swapaxes(advantages_scores, 0, 2)
     advantages_squared = np.swapaxes(advantages_squared, 0, 2)
-    return list(map(resize_and_interpolate, advantages_scores)), map(resize_and_interpolate, advantages_squared)
+    return list(map(resize_and_interpolate, advantages_scores)), map(resize_and_interpolate, advantages_squared), resize_and_interpolate(state_scores)
 
 
 def _get_mask(center, size, radius=5):

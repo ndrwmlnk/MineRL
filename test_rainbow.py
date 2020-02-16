@@ -17,11 +17,11 @@ from chainerrl.wrappers.atari_wrappers import ScaledFloatFrame as SFF
 
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
-from utility.config import CONFIG, SINGLE_FRAME_AGENT_ATTACK_ALWAYS_FWD, SINGLE_FRAME_AGENT
+from utility.config import CONFIG
 from utility.env_wrappers import (SerialDiscreteActionWrapper, MoveAxisWrapper, FrameSkip, FrameStack, ObtainPoVWrapper)
 from utility.q_functions import DistributionalDuelingDQN
 
-from saliency import create_and_save_saliency_image, make_barplot, ACTIONS
+from saliency import create_and_save_saliency_image, make_barplot, ACTIONS, save_image
 
 # All the evaluations will be evaluated on MineRLObtainDiamond-v0 environment
 # MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLObtainDiamond-v0')
@@ -29,85 +29,7 @@ MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
 MINERL_MAX_EVALUATION_EPISODES = int(os.getenv('MINERL_MAX_EVALUATION_EPISODES', 5))
 
 
-def wrap_env(env, test):
-    # wrap env: time limit...
-    if isinstance(env, gym.wrappers.TimeLimit):
-        env = env.env
-        max_episode_steps = env.spec.max_episode_steps
-        env = ContinuingTimeLimit(env, max_episode_steps=max_episode_steps)
-    # wrap env: observation...
-    # NOTE: wrapping order matters!
-    env = FrameSkip(env, skip=4)
-    env = ObtainPoVWrapper(env)
-    # convert hwc -> chw as Chainer requires.
-    env = MoveAxisWrapper(env, source=-1, destination=0)
-    env = SFF(env)
-    env = FrameStack(env, CONFIG["RAINBOW_HISTORY"], channel_order='chw')
-    # wrap env: action...
-    env = SerialDiscreteActionWrapper(
-        env,
-        always_keys=CONFIG["ALWAYS_KEYS"], reverse_keys=CONFIG["REVERSE_KEYS"], exclude_keys=CONFIG["EXCLUDE_KEYS"], exclude_noop=False)
-
-    return env
-
-
-def parse_agent(agent):
-    return {'DQN': chainerrl.agents.DQN,
-            'DoubleDQN': chainerrl.agents.DoubleDQN,
-            'PAL': chainerrl.agents.PAL,
-            'CategoricalDoubleDQN': chainerrl.agents.CategoricalDoubleDQN}[agent]
-
-
-def get_agent(
-        n_actions, arch, n_input_channels,
-        noisy_net_sigma, final_epsilon, final_exploration_frames, explorer_sample_func,
-        lr, adam_eps,
-        prioritized, steps, update_interval, replay_capacity, num_step_return,
-        agent_type, gpu, gamma, replay_start_size, target_update_interval, clip_delta, batch_accumulator
-):
-    # Q function
-    n_atoms = 51
-    v_min = -10
-    v_max = 10
-    q_func = DistributionalDuelingDQN(n_actions, n_atoms, v_min, v_max, n_input_channels=n_input_channels)
-
-    # explorer
-    if noisy_net_sigma is not None:
-        chainerrl.links.to_factorized_noisy(
-            q_func, sigma_scale=noisy_net_sigma)
-        # Turn off explorer
-        explorer = chainerrl.explorers.Greedy()
-    else:
-        explorer = chainerrl.explorers.LinearDecayEpsilonGreedy(
-            1.0, final_epsilon, final_exploration_frames, explorer_sample_func)
-
-    opt = chainer.optimizers.Adam(alpha=lr, eps=adam_eps)
-
-    opt.setup(q_func)
-
-    # Select a replay buffer to use
-    if prioritized:
-        # Anneal beta from beta0 to 1 throughout training
-        betasteps = steps / update_interval
-        rbuf = chainerrl.replay_buffer.PrioritizedReplayBuffer(replay_capacity, alpha=0.5, beta0=0.4, betasteps=betasteps, num_steps=num_step_return)
-    else:
-        rbuf = chainerrl.replay_buffer.ReplayBuffer(replay_capacity, num_step_return)
-
-    # build agent
-    def phi(x):
-        # observation -> NN input
-        return np.asarray(x)
-
-    Agent = parse_agent(agent_type)
-    agent = Agent(
-        q_func, opt, rbuf, gpu=gpu, gamma=gamma, explorer=explorer, replay_start_size=replay_start_size,
-        target_update_interval=target_update_interval, clip_delta=clip_delta, update_interval=update_interval,
-        batch_accumulator=batch_accumulator, phi=phi)
-
-    return agent
-
-
-def act(agent, obs, last_state, chop_start, reward, ):
+def act(agent, obs, last_state, reward, step):
     action_value = agent.model(
         agent.batch_states([obs], agent.xp, agent.phi))
     state = cuda.to_cpu(agent.model.state)
@@ -127,11 +49,17 @@ def act(agent, obs, last_state, chop_start, reward, ):
 
     # if the state value is high enough, the agent is standing in front of a tree
     if state >= STATE_THRESHOLD and not last_state:
-        print(f"Starting Chopping")
+        print(f"Start Chopping")
+        from pathlib import Path
+        out = Path("saliency", "chopping-states")
+        out.mkdir(exist_ok=True)
+        for i, o in enumerate(np.split(np.array(obs), CONFIG["RAINBOW_HISTORY"])):
+            save_image(o, Path(out, str(step).zfill(5) + '_' + str(i) + '_' + str(round(state)) + '.jpg'))
+
         action = 1
         last_state = True
     elif last_state and reward > 0:
-        print("Stopped Chopping")
+        print("Stop Chopping")
         last_state = False
     return action, last_state
 
@@ -140,17 +68,20 @@ def main(args):
     """
     This function will be called for training phase.
     """
-    # if args.gpu == 0:
-    #     sleeping_amount = 0.0
-    # else:
-    sleeping_amount = 0.5
+    if args.gpu == 0:
+        sleeping_amount = 0.0
+    else:
+        sleeping_amount = 0.5
 
     chainerrl.misc.set_random_seed(0)
-    CONFIG.apply(SINGLE_FRAME_AGENT)
     CONFIG.test()
 
     core_env = gym.make(MINERL_GYM_ENV)
     wrapped_env = wrap_env(core_env, test=False)
+
+    # wrong way to adjust the action space
+    # wrapped_env._actions[1]['attack'] = 1
+
     for i in range(wrapped_env.action_space.n):
         print("Action {0}: {1}".format(i, wrapped_env.action(i)))
 
