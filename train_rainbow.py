@@ -1,6 +1,7 @@
 # Simple env test.
 # noinspection PyUnresolvedReferences
 import minerl
+import logging
 import os
 import sys
 import time
@@ -24,14 +25,22 @@ TRAINING_EPISODES = 1000
 ACTION_PER_EPISODE = 1000
 
 EXPORT_DIR = Path(os.environ["HOME"], f"rainbow_{CONFIG['RAINBOW_HISTORY']}")
+EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
+logging.basicConfig(filename=Path(EXPORT_DIR, "train.log"),
+                            filemode='w',
+                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                            datefmt='%H:%M:%S',
+                            level=logging.INFO)
+
+logger = logging.getLogger('rainbow-train')
 
 def save_agent_and_stats(ep, agent, forest, stats, netr):
     out_dir = Path(EXPORT_DIR, "train", f"ep_{ep}_forest{forest}")
     out_dir.mkdir(parents=True, exist_ok=True)
-    with open("stats.pickle", "wb") as fp:
+    with open(Path(out_dir, "stats.pickle"), "wb") as fp:
         pickle.dump(stats, fp)
-    np.savetxt(Path(out_dir, "reward.txt"), netr)
+    np.savetxt(Path(out_dir, "reward.txt"), np.array([netr]))
     agent.save(out_dir)
 
 
@@ -46,7 +55,7 @@ def run_episode(agent, wrapped_env, forest, test=False):
 
     for i in range(ACTION_PER_EPISODE):
         if i % 100 == 0:
-            print(f"Net reward: {netr}")
+            logger.info(f"Net reward: {netr}")
 
         if done or ("error" in info):
             break
@@ -98,31 +107,38 @@ def train(wrapped_env):
     mean_len = 0
     for ep in range(1, TRAINING_EPISODES + 1):
         if ep % 100 == 0:
+            last_eps = agent.explorer.epsilon
             # Validation
-            print(f"===================== VALIDATION {ep % 100} =====================")
+            logger.info(f"===================== VALIDATION {ep % 100} =====================")
             CONFIG.test()
             agent = get_agent(n_actions=wrapped_env.action_space.n,
                               n_input_channels=wrapped_env.observation_space.shape[0],
                               explorer_sample_func=wrapped_env.action_space.sample,
                               gpu=-1,
-                              steps=10000)
+                              steps=10000,
+                              test=True)
             agent.load(Path(EXPORT_DIR, "train", f"ep_{ep - 1}_forest{forests[(ep - 1) % 10]}"))
             validate_agent(ep % 100, agent, wrapped_env, forests)
             CONFIG.train()
+            agent.load(Path(EXPORT_DIR, "train", f"ep_{ep - 1}_forest{forests[(ep - 1) % 10]}"))
             agent = get_agent(n_actions=wrapped_env.action_space.n,
                               n_input_channels=wrapped_env.observation_space.shape[0],
                               explorer_sample_func=wrapped_env.action_space.sample,
                               gpu=-1,
+                              start_eps=last_eps,
                               steps=(TRAINING_EPISODES - (ep % 100) - 1) * 1000)
-            print(f"===================== END VALIDATION {ep % 100} =====================")
+            logger.info(f"===================== END VALIDATION {ep % 100} =====================")
         else:
             # Train
-            print(f"===================== EPISODE {ep} =====================")
+            logger.info(f"===================== EPISODE {ep} =====================")
             ep_start = time.time()
             netr, stats = run_episode(agent, wrapped_env, forests[ep % 10])
             save_agent_and_stats(ep, agent, forests[ep % 10], stats, netr)
-            mean_len = (time.time() - ep_start + mean_len) / 2
-            print(f"===================== END {ep} - REWARD {netr} - MEAN LENGTH {round(mean_len * 60)}m =====================")
+            if ep == 1:
+                mean_len = (time.time() - ep_start) / 2
+            else:
+                mean_len = (time.time() - ep_start + mean_len) / 2
+            logger.info(f"===================== END {ep} - REWARD {netr} - MEAN LENGTH {round(mean_len)}s =====================")
 
 
 def main(args):
@@ -132,8 +148,10 @@ def main(args):
     # 0
     chainerrl.misc.set_random_seed(0)
     CONFIG.apply(SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD)
-
+    logger.info(f"Started loading {MINERL_GYM_ENV}")
+    start = time.time()
     core_env = gym.make(MINERL_GYM_ENV)
+    logger.info(f"Loaded {MINERL_GYM_ENV} in {round(time.time() - start)}s")
     wrapped_env = wrap_env(core_env)
 
     # wrong way to adjust the action space
@@ -142,7 +160,7 @@ def main(args):
     wrapped_env._actions[3]['forward'] = 0
 
     for i in range(wrapped_env.action_space.n):
-        print("Action {0}: {1}".format(i, wrapped_env.action(i)))
+        logger.info("Action {0}: {1}".format(i, wrapped_env.action(i)))
 
     train(wrapped_env)
     wrapped_env.close()
