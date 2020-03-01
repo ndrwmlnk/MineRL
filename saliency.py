@@ -4,16 +4,17 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import PIL
 from chainer import cuda
 from PIL import Image
-from skimage import color
 from skimage.filters import gaussian
 
 from utility.config import CONFIG
 
 ACTIONS = CONFIG["ACTION_SPACE"]
 
-SALIENCY_STD = 4.842388453060134
+#SALIENCY_STD = 4.842388453060134
+SALIENCY_STD = 12.603969568972966
 SALIENCY_MAX = (1.5 * SALIENCY_STD)
 FUDGE_FACTOR = 255 / SALIENCY_MAX
 
@@ -24,8 +25,13 @@ def mkdir_p(path):
     path.mkdir(parents=True, exist_ok=True)
 
 
-def save_image(array, path):
-    img = Image.fromarray(array)
+def save_image(array, path, size=None):
+    if isinstance(array, PIL.Image.Image):
+        img = array
+    else:
+        img = Image.fromarray(array)
+    if size is not None:
+        img.resize(size, resample=Image.BILINEAR)
     img.save(path)
 
 
@@ -74,7 +80,9 @@ def make_barplot(score, step, name="advantage"):
     plt.close(fig)
 
 
-def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_action, last_action):
+def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_action, last_action, sal_std=None):
+    if sal_std is not None:
+        FUDGE_FACTOR = 255 / (1.5 * sal_std)
     obs_dir = Path(OUT_PATH, "observations")
     mkdir_p(obs_dir)
 
@@ -96,6 +104,8 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
     state_fig, state_axs = plt.subplots(RAINBOW_HISTORY, 3)
     state_fig.suptitle(suptitle)
 
+    rollout = []
+
     for i, img in enumerate(np.split(obs, RAINBOW_HISTORY)):
         score, squared_score, state_score = score_frame(agent, obs, i, OUT_PATH, step, RAINBOW_HISTORY)
 
@@ -110,10 +120,10 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
             axs[0].axis('off')
 
         make_barplot(np.array(list(map(lambda arr: arr.sum(), score))), step, name="saliency")
-        imgs = list(map(lambda a: saliency_on_base_image(a, base_img), score))
+        imgs = list(map(lambda a: saliency_on_base_image(a, base_img, f_factor=FUDGE_FACTOR), score))
 
         for j, adv in enumerate(squared_score):
-            squared_sal_map, saliency = squared_saliency_on_base_image(adv, base_img, f"{step}_obs{i}_{ACTIONS[j]}")
+            squared_sal_map, saliency = squared_saliency_on_base_image(adv, base_img, f"{step}_obs{i}_{ACTIONS[j]}", f_factor=FUDGE_FACTOR)
             squared_maps_dir = Path(OUT_PATH, "maps", "advantages", "squared_saliency")
             mkdir_p(squared_maps_dir)
             save_image(saliency, Path(squared_maps_dir, f"step{step}.png"))
@@ -156,7 +166,7 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
             state_axs[0].imshow(base_img)
             state_axs[0].axis('off')
 
-        state_sal_map, saliency = saliency_on_base_image(state_score, base_img)
+        state_sal_map, saliency = saliency_on_base_image(state_score, base_img, f_factor=FUDGE_FACTOR)
         state_sal_maps_dir = Path(OUT_PATH, "maps", "state")
         mkdir_p(state_sal_maps_dir)
         save_image(saliency, Path(state_sal_maps_dir, f"step{step}_obs{i}.png"))
@@ -172,23 +182,30 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
             state_axs[2].imshow(state_sal_map)
             state_axs[2].axis('off')
 
-    state_dir = Path(OUT_PATH, "state_saliency")
+        adv_sal_map = [i[0] for i in imgs]
+        tot_adv = np.array(score).sum(axis=0)
+        rollout.append((adv_sal_map,
+                        state_sal_map,
+                        saliency_on_base_image(tot_adv, base_img, f_factor=FUDGE_FACTOR)[0]))
+
+    state_dir = Path(OUT_PATH, "state_saliency_plots")
     mkdir_p(state_dir)
     state_fig.savefig(Path(state_dir, f'step{step}_saliency.png'), dpi=600)
     plt.close(state_fig)
 
-    scores_dir = Path(OUT_PATH, "saliency")
+    scores_dir = Path(OUT_PATH, "saliency_plots")
     mkdir_p(scores_dir)
     fig.savefig(Path(scores_dir, f'step{step}_saliency.png'), dpi=600)
     plt.close(fig)
 
-    squared_dir = Path(OUT_PATH, "squared_saliency")
+    squared_dir = Path(OUT_PATH, "squared_saliency_plots")
     mkdir_p(squared_dir)
     squared_fig.savefig(Path(squared_dir, f'step{step}_squared_saliency.png'), dpi=600)
     plt.close(squared_fig)
+    return rollout
 
 
-def squared_saliency_on_base_image(saliency, base_img, step, channel=0, sigma=0):
+def squared_saliency_on_base_image(saliency, base_img, step, channel=0, sigma=0, f_factor=FUDGE_FACTOR):
     # base_img shape is intended to be (height, width, channel)
     size = base_img.shape[0:2]  # height, width
     saliency_max = saliency.max()
@@ -198,7 +215,7 @@ def squared_saliency_on_base_image(saliency, base_img, step, channel=0, sigma=0)
         saliency = gaussian(saliency, sigma=sigma)
 
     saliency -= saliency.min()
-    saliency = FUDGE_FACTOR * saliency_max * saliency / saliency.max()
+    saliency = f_factor * saliency_max * saliency / saliency.max()
 
     img = base_img.astype("uint16")
     img[:, :, channel] += saliency.astype("uint16")
@@ -207,8 +224,8 @@ def squared_saliency_on_base_image(saliency, base_img, step, channel=0, sigma=0)
 
 
 # RBG
-def saliency_on_base_image(saliency, base_img, sigma=0):
-    # export_saliency_trace(saliency)
+def saliency_on_base_image(saliency, base_img, sigma=0, f_factor=FUDGE_FACTOR):
+    export_saliency_trace(saliency)
     red = 0
     blue = 2
     size = base_img.shape[0:2]  # height, width
@@ -216,7 +233,7 @@ def saliency_on_base_image(saliency, base_img, sigma=0):
     if sigma != 0:
         saliency = gaussian(saliency, sigma=sigma)
 
-    saliency = FUDGE_FACTOR * saliency
+    saliency = f_factor * saliency
     base_img = base_img.astype("uint16")
     img = base_img.astype("uint16")
     img2 = np.ones(base_img.shape).astype("uint16")
@@ -277,13 +294,13 @@ def score_frame(agent, obs, idx, out_dir, step, n_frames, radius=5, density=10):
         for j in range(0, width, density):
             pix_dir = Path(out_dir, f"{i}-{j}")
             mask_path = Path(pix_dir, f"mask.png")
-            mkdir_p(pix_dir)
+            # mkdir_p(pix_dir)
 
             mask = _get_mask([i, j], size=[height, width], radius=radius)
 
-            if not mask_path.exists():
-                save_image(observation_to_rgb(mask), mask_path)
-                save_image(observation_to_rgb(1 - mask), Path(pix_dir, f"one_minus_mask.png"))
+            # if not mask_path.exists():
+                # save_image(observation_to_rgb(mask), mask_path)
+                # save_image(observation_to_rgb(1 - mask), Path(pix_dir, f"one_minus_mask.png"))
 
             perturbed_imgs = occlude_ith_frame(obs, idx, mask, pix_dir, step, n_frames)
 
@@ -324,16 +341,16 @@ def occlude_single_frame(frame, msk, out_dir, step, radius=3):
                    Path(act_dir, f"step{step}_{name}.png"))
 
     img_msk = frame * msk
-    export_image_for_obs(img_msk, "obs_dot_mask")
+    #export_image_for_obs(img_msk, "obs_dot_mask")
 
     gf = gaussian(chw_to_hwc(frame), sigma=radius, multichannel=True)
-    export_image_for_obs(gf, "gaussian_filter")
+    #export_image_for_obs(gf, "gaussian_filter")
 
     gf_one_mmask = gf.transpose(2, 0, 1) * (1 - msk)
-    export_image_for_obs(gf_one_mmask, "gaussian_filter_times_one_minus_mask")
+    #export_image_for_obs(gf_one_mmask, "gaussian_filter_times_one_minus_mask")
 
     p_img = img_msk + gf_one_mmask
-    export_image_for_obs(p_img, "perturbed_obs")
+    #export_image_for_obs(p_img, "perturbed_obs")
     return p_img
 
 

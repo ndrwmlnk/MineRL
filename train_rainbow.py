@@ -28,12 +28,13 @@ EXPORT_DIR = Path(os.environ["HOME"], f"rainbow_{CONFIG['RAINBOW_HISTORY']}")
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(filename=Path(EXPORT_DIR, "train.log"),
-                            filemode='w',
-                            format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                            datefmt='%H:%M:%S',
-                            level=logging.INFO)
+                    filemode='w',
+                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                    datefmt='%H:%M:%S',
+                    level=logging.INFO)
 
 logger = logging.getLogger('rainbow-train')
+
 
 def save_agent_and_stats(ep, agent, forest, stats, netr):
     out_dir = Path(EXPORT_DIR, "train", f"ep_{ep}_forest{forest}")
