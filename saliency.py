@@ -60,6 +60,13 @@ def observation_to_rgb(obs):
 
 def make_barplot(score, step, name="advantage"):
     score = cuda.to_cpu(score)
+
+    if name == "q_values":
+        m = score.max()
+        score -= score.min()
+        score = m * score / score.max()
+
+
     barplts_dir = Path(OUT_PATH, f"{name}_barplots")
     mkdir_p(barplts_dir)
 
@@ -103,6 +110,8 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
 
     state_fig, state_axs = plt.subplots(RAINBOW_HISTORY, 3)
     state_fig.suptitle(suptitle)
+
+    make_barplot(agent.model.q_values, step, name="q_values")
 
     rollout = []
 

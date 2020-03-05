@@ -45,7 +45,7 @@ def save_agent_and_stats(ep, agent, forest, stats, netr):
     agent.save(out_dir)
 
 
-def run_episode(agent, wrapped_env, forest, test=False):
+def run_episode(agent, wrapped_env, forest, test=False, actions=None):
     wrapped_env.seed(forest)
     obs = wrapped_env.reset()
     done = False
@@ -54,7 +54,10 @@ def run_episode(agent, wrapped_env, forest, test=False):
     reward = 0
     stats = []
 
-    for i in range(ACTION_PER_EPISODE):
+    if not actions:
+        actions = ACTION_PER_EPISODE
+
+    for i in range(actions):
         if i % 100 == 0:
             logger.info(f"Net reward: {netr}")
 

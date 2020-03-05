@@ -137,7 +137,7 @@ def main(args):
                                                             CONFIG["DECAY_STEPS"],
                                                             wrapped_env.action_space.sample)
         start_epsilon = expl.compute_epsilon((ep_idx * 1000) + 1)
-        print(f"Initial epsilon: {start_epsilon}, Forest seed: {forest}")
+        print(f"Initial epsilon: {start_epsilon}, Saliency std: {sal_std}, Forest seed: {forest}")
         wrapped_env.seed(forest)
 
     agent = get_agent(n_actions=wrapped_env.action_space.n,
@@ -146,7 +146,8 @@ def main(args):
                       gpu=args.gpu,
                       steps=steps,
                       start_eps=start_epsilon,
-                      test=args.test)
+                      test=args.test,
+                      gamma=0.95)
 
     print(f"Loading agent from {load_dir}")
     agent.load(load_dir)

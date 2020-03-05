@@ -97,7 +97,7 @@ class DuelingDQN(chainer.Chain, chainerrl.q_function.StateQFunction):
 
 
 class DistributionalDuelingDQN(
-        chainer.Chain, chainerrl.q_function.StateQFunction, chainerrl.recurrent.RecurrentChainMixin):
+    chainer.Chain, chainerrl.q_function.StateQFunction, chainerrl.recurrent.RecurrentChainMixin):
     """Distributional dueling fully-connected Q-function with discrete actions."""
 
     def __init__(self, n_actions, n_atoms, v_min, v_max,
@@ -146,14 +146,14 @@ class DistributionalDuelingDQN(
         ya, mean = F.broadcast(ya, mean)
         ya -= mean
 
-
         # State value
         ys = F.reshape(self.v_stream(h_v), (batch_size, 1, self.n_atoms))
         ya, ys = F.broadcast(ya, ys)
-        q = chainerrl.action_value.DistributionalDiscreteActionValue(F.softmax(ya + ys, axis=2), self.z_values)
+        q = F.softmax(ya + ys, axis=2)
         self.advantage = F.sum(F.scale(ya, self.z_values, axis=2), axis=2).data[0]
-        self.state = F.sum(F.scale(ys, self.z_values, axis=2), axis=2).data[0][0]
-        self.q_value = q.q_values.data[0]
+        self.state = sum(a[0] * a[1] for a in zip(self.z_values, F.softmax(ys[0][0], axis=0).array))
+        q = chainerrl.action_value.DistributionalDiscreteActionValue(q, self.z_values)
+        self.q_values = q.q_values.data[0]
         return q
 
 
