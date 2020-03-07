@@ -9,13 +9,15 @@ from random import randint
 
 import chainerrl
 import gym
+import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 from rainbow import wrap_env, get_agent
 from train_rainbow import run_episode, save_agent_and_stats
 from utility.config import CONFIG, SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD
-OUT = Path("forest_testing")
+OUT = Path(os.environ["HOME"], "forest_testing")
+OUT.mkdir(parents=True, exist_ok=True)
 
 
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
@@ -58,6 +60,7 @@ def main():
                       gamma=0.95)
     bad_forests = []
     i = 0
+    data_dir = Path(os.environ["HOME"], f"rainbow_{CONFIG['RAINBOW_HISTORY']}")
     while i < 1000:
         forest = randint(0, 999999)
         if forest in bad_forests:
@@ -67,12 +70,16 @@ def main():
             out_dir = Path(OUT, f"{forest}")
             for j, stats in enumerate(verify_reward(wrapped_env, forest)):
                 save_agent_and_stats(j, agent, forest, stats[0], stats[1])
-            shutil.move(Path(os.environ["HOME"], f"rainbow_{CONFIG['RAINBOW_HISTORY']}"),
+            shutil.move(data_dir,
                         out_dir,
                         copy_function=shutil.copytree)
         else:
-            bad_forests.append(forest)
+            bad_forests.append((forest, netr))
+            if data_dir.is_dir():
+                shutil.rmtree(data_dir)
         i += 1
+
+    np.savetxt(Path(OUT, "bad-forests.txt"), np.array(bad_forests))
 
     wrapped_env.close()
 
