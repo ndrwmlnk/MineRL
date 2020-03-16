@@ -39,7 +39,8 @@ def save_agent_and_stats(ep, agent, forest, stats, netr):
     with open(Path(out_dir, "stats.pickle"), "wb") as fp:
         pickle.dump(stats, fp)
     np.savetxt(Path(out_dir, "reward.txt"), np.array([netr]))
-    agent.save(out_dir)
+    if (ep % 5) == 0:
+        agent.save(out_dir)
 
 
 def run_episode(agent, wrapped_env, forest, actions, test=False):
@@ -53,7 +54,7 @@ def run_episode(agent, wrapped_env, forest, actions, test=False):
 
     for i in range(actions):
         print(f"Step {i}, netr: {netr}")
-        if i % 100 == 0:
+        if (i % (actions / 10)) == 0:
             logger.info(f"Net reward: {netr}")
 
         if done or ("error" in info):
@@ -100,7 +101,7 @@ def train(wrapped_env, args):
                       n_input_channels=wrapped_env.observation_space.shape[0],
                       explorer_sample_func=wrapped_env.action_space.sample,
                       gpu=-1,
-                      steps=CONFIG["DECAY_STEPS"])
+                      steps=args.episodes * args.steps)
 
     forests = [7, 45, 100, 200, 300, 420, 3456, 5000, 300000, 600506]
     mean_len = 0
@@ -110,7 +111,7 @@ def train(wrapped_env, args):
             forest = args.seed
         else:
             forest = forests[ep % 10]
-        if ep % (args.episodes / 10) == 0 and args.validate:
+        if (ep % (args.episodes / 10)) == 0 and args.validate:
             if not args.seed:
                 forest = forests[(ep - 1) % 10]
             last_eps = agent.explorer.epsilon
@@ -121,7 +122,7 @@ def train(wrapped_env, args):
                               n_input_channels=wrapped_env.observation_space.shape[0],
                               explorer_sample_func=wrapped_env.action_space.sample,
                               gpu=-1,
-                              steps=10000,
+                              steps=args.steps * 10,
                               test=True)
             agent.load(Path(EXPORT_DIR, "train", f"ep_{ep - 1}_forest{forest}"))
             validate_agent(vals, agent, wrapped_env, args.steps, forests)
@@ -132,7 +133,7 @@ def train(wrapped_env, args):
                               explorer_sample_func=wrapped_env.action_space.sample,
                               gpu=-1,
                               start_eps=last_eps,
-                              steps=(args.episodes - vals - 1) * 1000)
+                              steps=(args.episodes - vals - 1) * args.steps)
             logger.info(f"===================== END VALIDATION {vals} =====================")
             vals += 1
         else:

@@ -4,6 +4,7 @@ import minerl
 
 import os
 import re
+import shutil
 import sys
 from argparse import ArgumentParser
 from pathlib import Path
@@ -62,7 +63,7 @@ def overlay_state_value(obs, value, pos=(0, 0)):
     return img
 
 
-def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_std, size=(256, 256)):
+def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_std, size=(256, 256), export=True):
     adv_dir = Path(out_dir, "advantage")
     tot_adv_dir = Path(out_dir, "total_advantage")
     state_dir = Path(out_dir, "state")
@@ -76,7 +77,7 @@ def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_s
     rollout = create_and_save_saliency_image(agent, obs, step, reward, netr, action, last_action, sal_std=sal_std)
     make_barplot(cuda.to_cpu(agent.model.advantage), step)
 
-    def export(o, name, adv, state, tot_adv):
+    def export_obs(o, name, adv, state, tot_adv):
         save_image(overlay_state_value(observation_to_rgb(o), value),
                    Path(out_dir, name), size)
         save_image(overlay_state_value(observation_to_rgb(state), value),
@@ -86,15 +87,16 @@ def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_s
         save_image(tot_adv,
                    Path(tot_adv_dir, name), size)
 
-    if step == 0:
-        for i, o in enumerate(np.split(np.array(obs), CONFIG["RAINBOW_HISTORY"])):
-            name = f"{str(i).zfill(4)}.png"
-            export(o, name, *rollout[i])
+    if export:
+        if step == 0:
+            for i, o in enumerate(np.split(np.array(obs), CONFIG["RAINBOW_HISTORY"])):
+                name = f"{str(i).zfill(4)}.png"
+                export_obs(o, name, *rollout[i])
 
-    else:
-        o = np.split(np.array(obs), CONFIG["RAINBOW_HISTORY"])[-1]
-        name = f"{str(step + CONFIG['RAINBOW_HISTORY'] - 1).zfill(4)}.png"
-        export(o, name, *rollout[-1])
+        else:
+            o = np.split(np.array(obs), CONFIG["RAINBOW_HISTORY"])[-1]
+            name = f"{str(step + CONFIG['RAINBOW_HISTORY'] - 1).zfill(4)}.png"
+            export_obs(o, name, *rollout[-1])
 
 
 def main(args):
@@ -117,8 +119,8 @@ def main(args):
 
     steps = args.steps
     load_dir = Path(args.load)
-    p = Path(load_dir, "std.txt")
-    sal_std = float(np.loadtxt(p))
+    sal_std = 4.5
+
     if args.test:
         CONFIG.test()
         pattern = re.compile(r"^(val\d+)_")
@@ -136,7 +138,7 @@ def main(args):
                                                             CONFIG["FINAL_EPSILON"],
                                                             CONFIG["DECAY_STEPS"],
                                                             wrapped_env.action_space.sample)
-        start_epsilon = expl.compute_epsilon((ep_idx * 1000) + 1)
+        start_epsilon = expl.compute_epsilon((ep_idx * args.steps) + 1)
         print(f"Initial epsilon: {start_epsilon}, Saliency std: {sal_std}, Forest seed: {forest}")
         wrapped_env.seed(forest)
 
@@ -152,46 +154,59 @@ def main(args):
     print(f"Loading agent from {load_dir}")
     agent.load(load_dir)
 
-    obs = wrapped_env.reset()
-    done = False
-    last_action = None
-    info = {}
-    reward = 0
-    netr = 0
+    def run_episode(export):
+        wrapped_env.seed(420)
+        obs = wrapped_env.reset()
+        done = False
+        last_action = None
+        info = {}
+        reward = 0
+        netr = 0
 
-    states = []
-    advantages = []
+        states = []
+        advantages = []
 
-    for i in range(steps):
-        if done or ("error" in info):
-            break
+        for i in range(steps):
+            if done or ("error" in info):
+                break
+
+            if args.test:
+                action = agent.act(obs)
+            else:
+                action = agent.act_and_train(obs, reward)
+
+            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, out_dir, sal_std, export=export)
+            last_action = CONFIG["ACTION_SPACE"][action]
+
+            states.append(cuda.to_cpu(agent.model.state))
+            advantages.append(list(cuda.to_cpu(agent.model.advantage)))
+
+            if action == 1:
+                wrapped_env.env.env.env.env.env._skip = 24
+            else:
+                wrapped_env.env.env.env.env.env._skip = CONFIG["FRAME_SKIP"]
+
+            obs, reward, done, info = wrapped_env.step(action)
+            netr += reward
 
         if args.test:
-            action = agent.act(obs)
+            agent.stop_episode()
         else:
-            action = agent.act_and_train(obs, reward)
+            agent.stop_episode_and_train(obs, reward, done)
 
-        save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, out_dir, sal_std)
-        last_action = CONFIG["ACTION_SPACE"][action]
+        return np.array(states), np.array(advantages).T
 
-        states.append(cuda.to_cpu(agent.model.state))
-        advantages.append(list(cuda.to_cpu(agent.model.advantage)))
+    run_episode(export=False)
+    sal_dir = Path(".", "saliency")
+    p = Path(sal_dir, "std.txt")
+    sal_std = float(np.loadtxt(p))
+    try:
+        shutil.rmtree(sal_dir)
+    except OSError as e:
+        print(f"Error: {sal_dir} : {e.strerror}")
+        sys.exit(1)
 
-        if action == 1:
-            wrapped_env.env.env.env.env.env._skip = 24
-        else:
-            wrapped_env.env.env.env.env.env._skip = CONFIG["FRAME_SKIP"]
-
-        obs, reward, done, info = wrapped_env.step(action)
-        netr += reward
-
-    if args.test:
-        agent.stop_episode()
-    else:
-        agent.stop_episode_and_train(obs, reward, done)
-
-    states = np.array(states)
-    advantages = np.array(advantages).T
+    states, advantages = run_episode(export=True)
 
     def plot_trace(trace, label, path):
         np.savetxt(Path(path.parent, f"{label}-trace.txt"), trace)
@@ -215,7 +230,7 @@ if __name__ == "__main__":
         os.environ["JAVA_HOME"] = str(ARCH_JAVA_PATH)
     parser = ArgumentParser()
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
-    parser.add_argument("--steps", default=1000)
+    parser.add_argument("--steps", "-s", default=1000)
     parser.add_argument("--test", default=False, action="store_true")
     parser.add_argument("--load", default="models/rainbow")
 
