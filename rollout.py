@@ -52,15 +52,25 @@ def merge_images(imgs):
         raise ValueError(f"{imgs} is supposed to be a list")
 
 
-def overlay_state_value(obs, value, pos=(0, 0)):
-    text = f"State: {round(float(value), ndigits=2)}"
+def overlay_text(obs, text, pos=(0, 0), fill="black"):
     img = Image.fromarray(obs, mode="RGB")
     draw = ImageDraw.Draw(img)
     font = ImageFont.truetype('./FiraMono-Regular.ttf', 8)
     w, h = font.getsize(text)
-    draw.rectangle((*pos, pos[0] + w, pos[1] + h), fill='black')
+    if fill:
+        draw.rectangle((*pos, pos[0] + w, pos[1] + h), fill=fill)
     draw.text(pos, text, (255, 255, 255), font=font)
     return img
+
+
+def overlay_state_value(obs, value, pos=(0, 0)):
+    text = f"State: {round(float(value), ndigits=2)}"
+    return overlay_text(obs, text, pos)
+
+
+def overlay_q_values(obs, values, pos=(0, 0)):
+    text = "\n".join([f"Q{i}: {round(float(v), ndigits=2)}" for i, v in enumerate(values)])
+    return overlay_text(obs, text, pos, fill="")
 
 
 def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_std, size=(256, 256), export=True):
@@ -74,11 +84,12 @@ def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_s
     state_dir.mkdir(parents=True, exist_ok=True)
 
     value = cuda.to_cpu(agent.model.state)
+    q_values = cuda.to_cpu(agent.model.q_values)
     rollout = create_and_save_saliency_image(agent, obs, step, reward, netr, action, last_action, sal_std=sal_std)
     make_barplot(cuda.to_cpu(agent.model.advantage), step)
 
     def export_obs(o, name, adv, state, tot_adv):
-        save_image(overlay_state_value(observation_to_rgb(o), value),
+        save_image(overlay_q_values(observation_to_rgb(o), q_values),
                    Path(out_dir, name), size)
         save_image(overlay_state_value(observation_to_rgb(state), value),
                    Path(state_dir, name), size)

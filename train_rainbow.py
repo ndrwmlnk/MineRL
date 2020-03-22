@@ -3,6 +3,7 @@
 import minerl
 import logging
 import os
+import shutil
 import sys
 import time
 import pickle
@@ -32,27 +33,22 @@ LOG_PATH = Path(EXPORT_DIR, "train.log")
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 # create file handler which logs even debug messages
-handler = RotatingFileHandler(LOG_PATH)
+handler = RotatingFileHandler(LOG_PATH, maxBytes=5*1024*1024, backupCount=50)
 handler.setLevel(logging.DEBUG)
-# create console handler with a higher log level
-ch = logging.StreamHandler()
-ch.setLevel(logging.ERROR)
 # create formatter and add it to the handlers
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
-ch.setFormatter(formatter)
 # add the handlers to the logger
 logger.addHandler(handler)
-logger.addHandler(ch)
 
 
-def save_agent_and_stats(ep, agent, forest, stats, netr):
+def save_agent_and_stats(ep, agent, forest, stats, netr, total_episodes):
     out_dir = Path(EXPORT_DIR, "train", f"ep_{ep}_forest{forest}")
     out_dir.mkdir(parents=True, exist_ok=True)
     with open(Path(out_dir, "stats.pickle"), "wb") as fp:
         pickle.dump(stats, fp)
     np.savetxt(Path(out_dir, "reward.txt"), np.array([netr]))
-    if (ep % 5) == 0:
+    if ((ep % 5) == 0) or ((ep % round(total_episodes / 10)) == 0):
         agent.save(out_dir)
 
 
@@ -115,7 +111,7 @@ def run_episode(agent, wrapped_env, forest, actions, out_dir=None, test=False):
             if not out_dir:
                 raise ValueError(f"Export directory for validation observations is None.")
             action = agent.act(obs)
-            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, out_dir, 4.5, export=True)
+            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, Path(out_dir, "rollout"), 4.5, export=True)
         else:
             action = agent.act_and_train(obs, reward)
         last_action = CONFIG["ACTION_SPACE"][action]
@@ -138,11 +134,16 @@ def run_episode(agent, wrapped_env, forest, actions, out_dir=None, test=False):
 
 def validate_agent(ep, agent, wrapped_env, args, forests):
     rewards = np.array([])
-    out_dir = Path(EXPORT_DIR, "validation", f"val{ep}_mean{round(rewards.mean(axis=0)[1])}")
+    out_dir = Path(EXPORT_DIR, "validation", f"val{ep}")
     for forest in forests:
         if args.seed:
             forest = args.seed
         netr, stats, steps = run_episode(agent, wrapped_env, forest, args.steps, out_dir, test=True)
+        sal_dir = Path(".", "saliency")
+        try:
+            shutil.rmtree(sal_dir)
+        except OSError as e:
+            logger.error(f"Error: {sal_dir}: {e.strerror}")
         rewards = np.array([*rewards, (forest, netr)])
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savetxt(Path(out_dir, "rewards.txt"), rewards)
@@ -166,7 +167,7 @@ def train(wrapped_env, args):
     mean_len = 0
     vals = 0
     performed_steps = 0
-    for ep in range(200, args.episodes + 1):
+    for ep in range(1, args.episodes + 1):
         last_eps = agent.explorer.epsilon
         logger.info(f"Epsilon: {last_eps}")
         if args.seed:
@@ -184,7 +185,7 @@ def train(wrapped_env, args):
                                                         action_sequence)
         else:
             netr, stats, steps = run_episode(agent, wrapped_env, forest, args.steps)
-        save_agent_and_stats(ep, agent, forest, stats, netr)
+        save_agent_and_stats(ep, agent, forest, stats, netr, args.episodes)
         performed_steps += steps
         if ep == 1:
             mean_len = (time.time() - ep_start)

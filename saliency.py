@@ -30,7 +30,7 @@ def save_image(array, path, size=None):
         img = array
     else:
         img = Image.fromarray(array)
-    if size is not None:
+    if size:
         img.resize(size, resample=Image.BILINEAR)
     img.save(path)
 
