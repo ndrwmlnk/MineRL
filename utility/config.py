@@ -11,7 +11,6 @@ FOUR_FRAMES_AGENT = {
         "RAINBOW_HISTORY": 4,
         "START_EPSILON": 1.0,
         "FINAL_EPSILON": 0.01,
-        "DECAY_STEPS": 10 ** 6,
         "ALWAYS_KEYS": ['attack'],
         "REVERSE_KEYS": ['forward'],
         "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint'],
@@ -29,12 +28,33 @@ FOUR_FRAMES_AGENT = {
     "test": {"NOISY_NET_SIGMA": 0.5}
 }
 
+DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD = {
+    "train": {
+        "RAINBOW_HISTORY": 2,
+        "START_EPSILON": 0.99,
+        "FINAL_EPSILON": 0.0,
+        "ALWAYS_KEYS": ['forward'],
+        "REVERSE_KEYS": [],
+        "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint'],
+        "FRAME_SKIP": 12,
+        "EXCLUDE_NOOP": True,
+        "MAX_CAMERA_RANGE": 1.875,
+        "ACTION_SPACE": {
+            0: "FWD_JUMP",
+            1: "ATT",
+            2: "LEFT",
+            3: "RIGHT",
+        }
+    },
+    "test": {"NOISY_NET_SIGMA": 0.5}
+}
+
+
 SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD = {
     "train": {
         "RAINBOW_HISTORY": 1,
         "START_EPSILON": 0.99,
         "FINAL_EPSILON": 0.0,
-        "DECAY_STEPS": 10 ** 6,
         "ALWAYS_KEYS": ['forward'],
         "REVERSE_KEYS": [],
         "EXCLUDE_KEYS": ['back', 'left', 'right', 'sneak', 'sprint'],
@@ -66,7 +86,6 @@ class Configuration(dict):
             for k in ["RAINBOW_HISTORY",
                       "START_EPSILON",
                       "FINAL_EPSILON",
-                      "DECAY_STEPS",
                       "ALWAYS_KEYS",
                       "REVERSE_KEYS",
                       "EXCLUDE_KEYS",
@@ -105,4 +124,4 @@ class Configuration(dict):
         self.update(self.trainc)
 
 
-CONFIG = Configuration(SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD)
+CONFIG = Configuration(DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD)

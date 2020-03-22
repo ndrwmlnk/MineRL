@@ -88,8 +88,9 @@ def make_barplot(score, step, name="advantage"):
 
 
 def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_action, last_action, sal_std=None):
-    if sal_std is not None:
+    if sal_std:
         FUDGE_FACTOR = 255 / (1.5 * sal_std)
+
     obs_dir = Path(OUT_PATH, "observations")
     mkdir_p(obs_dir)
 

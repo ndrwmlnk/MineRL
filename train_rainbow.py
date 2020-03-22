@@ -6,6 +6,7 @@ import os
 import sys
 import time
 import pickle
+from logging.handlers import RotatingFileHandler
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -16,7 +17,9 @@ import numpy as np
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 from rainbow import wrap_env, get_agent
-from utility.config import CONFIG, SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD
+from rollout import save_obs
+from test_action_sequence import get_actions
+from utility.config import CONFIG, DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD
 
 # All the evaluations will be evaluated on MineRLObtainDiamond-v0 environment
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
@@ -24,13 +27,23 @@ MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
 EXPORT_DIR = Path(os.environ["HOME"], f"rainbow_{CONFIG['RAINBOW_HISTORY']}")
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
-logging.basicConfig(filename=Path(EXPORT_DIR, "train.log"),
-                    filemode='w',
-                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
-                    datefmt='%H:%M:%S',
-                    level=logging.INFO)
+LOG_PATH = Path(EXPORT_DIR, "train.log")
 
-logger = logging.getLogger('rainbow-train')
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+# create file handler which logs even debug messages
+handler = RotatingFileHandler(LOG_PATH)
+handler.setLevel(logging.DEBUG)
+# create console handler with a higher log level
+ch = logging.StreamHandler()
+ch.setLevel(logging.ERROR)
+# create formatter and add it to the handlers
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+ch.setFormatter(formatter)
+# add the handlers to the logger
+logger.addHandler(handler)
+logger.addHandler(ch)
 
 
 def save_agent_and_stats(ep, agent, forest, stats, netr):
@@ -43,7 +56,7 @@ def save_agent_and_stats(ep, agent, forest, stats, netr):
         agent.save(out_dir)
 
 
-def run_episode(agent, wrapped_env, forest, actions, test=False):
+def run_curriculum_episode(agent, wrapped_env, forest, actions):
     wrapped_env.seed(forest)
     obs = wrapped_env.reset()
     done = False
@@ -51,20 +64,61 @@ def run_episode(agent, wrapped_env, forest, actions, test=False):
     netr = 0
     reward = 0
     stats = []
+    steps = 0
 
-    for i in range(actions):
-        print(f"Step {i}, netr: {netr}")
-        if (i % (actions / 10)) == 0:
-            logger.info(f"Net reward: {netr}")
-
+    for i in range(len(actions)):
         if done or ("error" in info):
             break
 
+        if (i % round(len(actions) / 10)) == 0:
+            logger.info(f"Net reward: {netr}")
+
+        steps += 1
+        agent.act_and_train(obs, reward)
+        action = actions[i]
+
+        stats.append((agent.model.state, agent.model.q_values, agent.model.advantage))
+
+        if action == 1:
+            wrapped_env.env.env.env.env.env._skip = 24
+        else:
+            wrapped_env.env.env.env.env.env._skip = CONFIG["FRAME_SKIP"]
+
+        obs, reward, done, info = wrapped_env.step(action)
+        netr += reward
+
+    agent.stop_episode_and_train(obs, reward, done)
+    return netr, stats, steps
+
+
+def run_episode(agent, wrapped_env, forest, actions, out_dir=None, test=False):
+    wrapped_env.seed(forest)
+    obs = wrapped_env.reset()
+    done = False
+    last_action = None
+    info = {}
+    netr = 0
+    reward = 0
+    stats = []
+
+    steps = 0
+
+    for i in range(actions):
+        if done or ("error" in info):
+            break
+        if (i % round(actions / 10)) == 0:
+            logger.info(f"Net reward: {netr}")
+
+        steps += 1
+
         if test:
+            if not out_dir:
+                raise ValueError(f"Export directory for validation observations is None.")
             action = agent.act(obs)
+            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, out_dir, 4.5, export=True)
         else:
             action = agent.act_and_train(obs, reward)
-
+        last_action = CONFIG["ACTION_SPACE"][action]
         stats.append((agent.model.state, agent.model.q_values, agent.model.advantage))
 
         if action == 1:
@@ -79,15 +133,17 @@ def run_episode(agent, wrapped_env, forest, actions, test=False):
         agent.stop_episode()
     else:
         agent.stop_episode_and_train(obs, reward, done)
-    return netr, stats
+    return netr, stats, steps
 
 
-def validate_agent(ep, agent, wrapped_env, actions, forests):
+def validate_agent(ep, agent, wrapped_env, args, forests):
     rewards = np.array([])
-    for forest in forests:
-        netr, stats = run_episode(agent, wrapped_env, forest, actions, test=True)
-        rewards = np.array([*rewards, (forest, netr)])
     out_dir = Path(EXPORT_DIR, "validation", f"val{ep}_mean{round(rewards.mean(axis=0)[1])}")
+    for forest in forests:
+        if args.seed:
+            forest = args.seed
+        netr, stats, steps = run_episode(agent, wrapped_env, forest, args.steps, out_dir, test=True)
+        rewards = np.array([*rewards, (forest, netr)])
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savetxt(Path(out_dir, "rewards.txt"), rewards)
     agent.save(out_dir)
@@ -97,25 +153,47 @@ def train(wrapped_env, args):
     """
     This function will be called for training phase.
     """
+    action_sequence = get_actions(Path("action-sequences", "420_4_64.txt"))
+
     agent = get_agent(n_actions=wrapped_env.action_space.n,
                       n_input_channels=wrapped_env.observation_space.shape[0],
                       explorer_sample_func=wrapped_env.action_space.sample,
                       gpu=-1,
-                      steps=args.episodes * args.steps)
+                      steps=args.episodes * args.steps,
+                      gamma=0.95)
 
     forests = [7, 45, 100, 200, 300, 420, 3456, 5000, 300000, 600506]
     mean_len = 0
     vals = 0
-    for ep in range(1, args.episodes + 1):
+    performed_steps = 0
+    for ep in range(200, args.episodes + 1):
+        last_eps = agent.explorer.epsilon
+        logger.info(f"Epsilon: {last_eps}")
         if args.seed:
             forest = args.seed
         else:
             forest = forests[ep % 10]
-        if (ep % (args.episodes / 10)) == 0 and args.validate:
-            if not args.seed:
-                forest = forests[(ep - 1) % 10]
-            last_eps = agent.explorer.epsilon
-            # Validation
+
+        # Train
+        logger.info(f"===================== EPISODE {ep} =====================")
+        ep_start = time.time()
+        if (ep % 15) == 0:
+            netr, stats, steps = run_curriculum_episode(agent,
+                                                        wrapped_env,
+                                                        forest,
+                                                        action_sequence)
+        else:
+            netr, stats, steps = run_episode(agent, wrapped_env, forest, args.steps)
+        save_agent_and_stats(ep, agent, forest, stats, netr)
+        performed_steps += steps
+        if ep == 1:
+            mean_len = (time.time() - ep_start)
+        else:
+            mean_len = (time.time() - ep_start + mean_len) / 2
+        logger.info(f"===================== END {ep} - REWARD {netr} - MEAN LENGTH {round(mean_len)}s =====================")
+
+        # Validate
+        if (ep % round(args.episodes / 10)) == 0 and args.validate:
             logger.info(f"===================== VALIDATION {vals} =====================")
             CONFIG.test()
             agent = get_agent(n_actions=wrapped_env.action_space.n,
@@ -123,30 +201,22 @@ def train(wrapped_env, args):
                               explorer_sample_func=wrapped_env.action_space.sample,
                               gpu=-1,
                               steps=args.steps * 10,
-                              test=True)
-            agent.load(Path(EXPORT_DIR, "train", f"ep_{ep - 1}_forest{forest}"))
-            validate_agent(vals, agent, wrapped_env, args.steps, forests)
+                              test=True,
+                              gamma=0.95)
+            agent.load(Path(EXPORT_DIR, "train", f"ep_{ep}_forest{forest}"))
+            validate_agent(vals, agent, wrapped_env, args, forests)
+            logger.info(f"===================== END VALIDATION {vals} =====================")
+
             CONFIG.train()
-            agent.load(Path(EXPORT_DIR, "train", f"ep_{ep - 1}_forest{forest}"))
             agent = get_agent(n_actions=wrapped_env.action_space.n,
                               n_input_channels=wrapped_env.observation_space.shape[0],
                               explorer_sample_func=wrapped_env.action_space.sample,
                               gpu=-1,
                               start_eps=last_eps,
-                              steps=(args.episodes - vals - 1) * args.steps)
-            logger.info(f"===================== END VALIDATION {vals} =====================")
+                              steps=(args.episodes * args.steps) - performed_steps,
+                              gamma=0.95)
+            agent.load(Path(EXPORT_DIR, "train", f"ep_{ep}_forest{forest}"))
             vals += 1
-        else:
-            # Train
-            logger.info(f"===================== EPISODE {ep} =====================")
-            ep_start = time.time()
-            netr, stats = run_episode(agent, wrapped_env, forest, args.steps)
-            save_agent_and_stats(ep, agent, forest, stats, netr)
-            if ep == 1:
-                mean_len = (time.time() - ep_start) / 2
-            else:
-                mean_len = (time.time() - ep_start + mean_len) / 2
-            logger.info(f"===================== END {ep} - REWARD {netr} - MEAN LENGTH {round(mean_len)}s =====================")
 
 
 def main(args):
@@ -155,7 +225,7 @@ def main(args):
     """
     # 0
     chainerrl.misc.set_random_seed(0)
-    CONFIG.apply(SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD)
+    CONFIG.apply(DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD)
     logger.info(f"Started loading {MINERL_GYM_ENV}")
     start = time.time()
     core_env = gym.make(MINERL_GYM_ENV)

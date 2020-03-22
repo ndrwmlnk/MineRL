@@ -94,6 +94,9 @@ def main(args):
     print(f"Loading agent from {args.load}")
     agent.load(args.load)
 
+    if args.seed:
+        wrapped_env.seed(args.seed)
+
     for _ in range(MINERL_MAX_EVALUATION_EPISODES):
         obs = wrapped_env.reset()
         # input("Press ENTER to continue")
@@ -108,10 +111,11 @@ def main(args):
         while not done:
             start = time.time()
             action, last_state = act(agent, obs, last_state, chop_start, reward)
-            make_barplot(cuda.to_cpu(agent.model.advantage), step)
-            create_and_save_saliency_image(agent, obs, step, reward, netr, ACTIONS[action], last_action)
+#            make_barplot(cuda.to_cpu(agent.model.advantage), step)
+#            create_and_save_saliency_image(agent, obs, step, reward, netr, ACTIONS[action], last_action)
             last_action = ACTIONS[action]
             print("Action: ", ACTIONS[action])
+            wrapped_env.render(mode="human")
             obs, reward, done, info = wrapped_env.step(action)
             netr += reward
             print("Net reward: ", netr)

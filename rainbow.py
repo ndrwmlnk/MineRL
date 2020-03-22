@@ -44,10 +44,10 @@ def parse_agent(agent):
 
 
 def get_agent(
-        n_actions, n_input_channels, explorer_sample_func, gpu, start_eps=None, steps=None, test=False,
+        n_actions, n_input_channels, explorer_sample_func, gpu, steps, start_eps=None, test=False,
         lr=0.0000625, adam_eps=0.00015, prioritized=True, update_interval=4,
-        replay_capacity=30000, num_step_return=10, agent_type='CategoricalDoubleDQN',  gamma=0.99, replay_start_size=5000,
-        target_update_interval=10000, clip_delta=True, batch_accumulator='mean'
+        replay_capacity=64000, num_step_return=2, agent_type='CategoricalDoubleDQN',  gamma=0.95, replay_start_size=640,
+        target_update_interval=6400, clip_delta=True, batch_accumulator='mean'
 ):
     # Q function
     n_atoms = 51
@@ -62,8 +62,7 @@ def get_agent(
         # Turn off explorer
         explorer = chainerrl.explorers.Greedy()
     else:
-        if not steps:
-            steps = CONFIG["DECAY_STEPS"]
+
         if not start_eps:
             start_eps = CONFIG["START_EPSILON"]
         explorer = chainerrl.explorers.LinearDecayEpsilonGreedy(start_eps,

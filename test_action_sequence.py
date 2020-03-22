@@ -3,6 +3,7 @@
 import minerl
 
 import os
+import shutil
 import sys
 from argparse import ArgumentParser
 from pathlib import Path
@@ -13,6 +14,7 @@ import gym
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 from rainbow import wrap_env, get_agent
+from rollout import save_obs, OUT_DIR
 from utility.config import CONFIG, SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD
 
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
@@ -85,10 +87,14 @@ def main(args):
                       test=True,
                       gamma=0.95)
 
+    out_dir = Path(OUT_DIR, "sequences", Path(args.actions).name.split(".")[0])
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     obs = wrapped_env.reset()
     done = False
     info = {}
     netr = 0
+    import time
     for i in range(args.steps):
         action = actions[i]
         if done or ("error" in info):
@@ -103,9 +109,20 @@ def main(args):
             wrapped_env.env.env.env.env.env._skip = CONFIG["FRAME_SKIP"]
 
         obs, reward, done, info = wrapped_env.step(action)
+        if args.rollout:
+            save_obs(agent, obs, i,reward, netr, action, last_action, out_dir, 4.5)
+        else:
+            wrapped_env.render(mode="human")
+        time.sleep(1.0)
         if reward > 0:
             print(f"Received reward +{reward}")
         netr += reward
+
+    sal_dir = Path(".", "saliency")
+    try:
+        shutil.rmtree(sal_dir)
+    except OSError as e:
+        print(f"Error: {sal_dir} : {e.strerror}")
 
     agent.stop_episode()
     wrapped_env.close()
@@ -118,6 +135,7 @@ if __name__ == "__main__":
         os.environ["JAVA_HOME"] = str(ARCH_JAVA_PATH)
     parser = ArgumentParser()
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
+    parser.add_argument("--rollout", default=False, action="store_true")
     parser.add_argument("--steps", "-s", type=int, default=32, help="Number of actions taken per episode")
     parser.add_argument("--actions")
 

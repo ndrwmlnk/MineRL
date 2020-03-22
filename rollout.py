@@ -136,7 +136,7 @@ def main(args):
         forest = int(m.group(2))
         expl = chainerrl.explorers.LinearDecayEpsilonGreedy(CONFIG["START_EPSILON"],
                                                             CONFIG["FINAL_EPSILON"],
-                                                            CONFIG["DECAY_STEPS"],
+                                                            steps,
                                                             wrapped_env.action_space.sample)
         start_epsilon = expl.compute_epsilon((ep_idx * args.steps) + 1)
         print(f"Initial epsilon: {start_epsilon}, Saliency std: {sal_std}, Forest seed: {forest}")
