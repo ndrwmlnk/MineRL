@@ -73,7 +73,7 @@ def overlay_q_values(obs, values, pos=(0, 0)):
     return overlay_text(obs, text, pos, fill="")
 
 
-def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_std, size=(256, 256), export=True):
+def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_std=None, size=(256, 256), export=True, sal_export=True):
     adv_dir = Path(out_dir, "advantage")
     tot_adv_dir = Path(out_dir, "total_advantage")
     state_dir = Path(out_dir, "state")
@@ -85,8 +85,10 @@ def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_s
 
     value = cuda.to_cpu(agent.model.state)
     q_values = cuda.to_cpu(agent.model.q_values)
-    rollout = create_and_save_saliency_image(agent, obs, step, reward, netr, action, last_action, sal_std=sal_std)
-    make_barplot(cuda.to_cpu(agent.model.advantage), step)
+    if sal_export:
+        make_barplot(cuda.to_cpu(agent.model.advantage), step)
+
+    rollout = create_and_save_saliency_image(agent, obs, step, reward, netr, action, last_action, sal_std=sal_std, export=sal_export)
 
     def export_obs(o, name, adv, state, tot_adv):
         save_image(overlay_q_values(observation_to_rgb(o), q_values),

@@ -87,7 +87,7 @@ def make_barplot(score, step, name="advantage"):
     plt.close(fig)
 
 
-def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_action, last_action, sal_std=None):
+def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_action, last_action, sal_std=None, export=True):
     if sal_std:
         FUDGE_FACTOR = 255 / (1.5 * sal_std)
 
@@ -112,7 +112,8 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
     state_fig, state_axs = plt.subplots(RAINBOW_HISTORY, 3)
     state_fig.suptitle(suptitle)
 
-    make_barplot(agent.model.q_values, step, name="q_values")
+    if export:
+        make_barplot(agent.model.q_values, step, name="q_values")
 
     rollout = []
 
@@ -120,7 +121,8 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
         score, squared_score, state_score = score_frame(agent, obs, i, OUT_PATH, step, RAINBOW_HISTORY)
 
         base_img = observation_to_rgb(img)
-        save_image(base_img, Path(obs_dir, f"step{step}_obs{i}.png"))
+        if export:
+            save_image(base_img, Path(obs_dir, f"step{step}_obs{i}.png"))
 
         if RAINBOW_HISTORY > 1:
             axs[i][0].imshow(base_img)
@@ -129,14 +131,17 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
             axs[0].imshow(base_img)
             axs[0].axis('off')
 
-        make_barplot(np.array(list(map(lambda arr: arr.sum(), score))), step, name="saliency")
+        if export:
+            make_barplot(np.array(list(map(lambda arr: arr.sum(), score))), step, name="saliency")
+
         imgs = list(map(lambda a: saliency_on_base_image(a, base_img, f_factor=FUDGE_FACTOR), score))
 
         for j, adv in enumerate(squared_score):
             squared_sal_map, saliency = squared_saliency_on_base_image(adv, base_img, f"{step}_obs{i}_{ACTIONS[j]}", f_factor=FUDGE_FACTOR)
             squared_maps_dir = Path(OUT_PATH, "maps", "advantages", "squared_saliency")
             mkdir_p(squared_maps_dir)
-            save_image(saliency, Path(squared_maps_dir, f"step{step}.png"))
+            if export:
+                save_image(saliency, Path(squared_maps_dir, f"step{step}.png"))
 
             if RAINBOW_HISTORY > 1:
                 squared_axs[i][j].set_title(ACTIONS[j])
@@ -157,7 +162,8 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
             sal_map = imgs[k][1]
             maps_dir = Path(OUT_PATH, "maps", "advantages", "saliency")
             mkdir_p(maps_dir)
-            save_image(sal_map, Path(maps_dir, f"step{step}_obs{i}_{ACTIONS[k]}.png"))
+            if export:
+                save_image(sal_map, Path(maps_dir, f"step{step}_obs{i}_{ACTIONS[k]}.png"))
             if RAINBOW_HISTORY > 1:
                 axs[i][j].imshow(sal_map)
                 axs[i][j].axis('off')
@@ -179,7 +185,8 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
         state_sal_map, saliency = saliency_on_base_image(state_score, base_img, f_factor=FUDGE_FACTOR)
         state_sal_maps_dir = Path(OUT_PATH, "maps", "state")
         mkdir_p(state_sal_maps_dir)
-        save_image(saliency, Path(state_sal_maps_dir, f"step{step}_obs{i}.png"))
+        if export:
+            save_image(saliency, Path(state_sal_maps_dir, f"step{step}_obs{i}.png"))
 
         if RAINBOW_HISTORY > 1:
             state_axs[i][1].imshow(saliency)
@@ -197,21 +204,23 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
         rollout.append((adv_sal_map,
                         state_sal_map,
                         saliency_on_base_image(tot_adv, base_img, f_factor=FUDGE_FACTOR)[0]))
+    if export:
+        state_dir = Path(OUT_PATH, "state_saliency_plots")
+        mkdir_p(state_dir)
+        state_fig.savefig(Path(state_dir, f'step{step}_saliency.png'), dpi=600)
 
-    state_dir = Path(OUT_PATH, "state_saliency_plots")
-    mkdir_p(state_dir)
-    state_fig.savefig(Path(state_dir, f'step{step}_saliency.png'), dpi=600)
+        scores_dir = Path(OUT_PATH, "saliency_plots")
+        mkdir_p(scores_dir)
+        fig.savefig(Path(scores_dir, f'step{step}_saliency.png'), dpi=600)
+
+        squared_dir = Path(OUT_PATH, "squared_saliency_plots")
+        mkdir_p(squared_dir)
+        squared_fig.savefig(Path(squared_dir, f'step{step}_squared_saliency.png'), dpi=600)
+
     plt.close(state_fig)
-
-    scores_dir = Path(OUT_PATH, "saliency_plots")
-    mkdir_p(scores_dir)
-    fig.savefig(Path(scores_dir, f'step{step}_saliency.png'), dpi=600)
     plt.close(fig)
-
-    squared_dir = Path(OUT_PATH, "squared_saliency_plots")
-    mkdir_p(squared_dir)
-    squared_fig.savefig(Path(squared_dir, f'step{step}_squared_saliency.png'), dpi=600)
     plt.close(squared_fig)
+
     return rollout
 
 

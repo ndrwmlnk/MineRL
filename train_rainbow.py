@@ -3,6 +3,7 @@
 import minerl
 import logging
 import os
+import re
 import shutil
 import sys
 import time
@@ -30,16 +31,13 @@ EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 LOG_PATH = Path(EXPORT_DIR, "train.log")
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-# create file handler which logs even debug messages
 handler = RotatingFileHandler(LOG_PATH, maxBytes=5*1024*1024, backupCount=50)
-handler.setLevel(logging.DEBUG)
-# create formatter and add it to the handlers
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-handler.setFormatter(formatter)
-# add the handlers to the logger
-logger.addHandler(handler)
+logging.basicConfig(handlers=[handler],
+                    format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                    datefmt='%H:%M:%S',
+                    level=logging.DEBUG)
+
+logger = logging.getLogger('rainbow-train')
 
 
 def save_agent_and_stats(ep, agent, forest, stats, netr, total_episodes):
@@ -65,10 +63,10 @@ def run_curriculum_episode(agent, wrapped_env, forest, actions):
     for i in range(len(actions)):
         if done or ("error" in info):
             break
-
         if (i % round(len(actions) / 10)) == 0:
             logger.info(f"Net reward: {netr}")
 
+        logger.info(f"Epsilon: {agent.explorer.epsilon}")
         steps += 1
         agent.act_and_train(obs, reward)
         action = actions[i]
@@ -105,13 +103,14 @@ def run_episode(agent, wrapped_env, forest, actions, out_dir=None, test=False):
         if (i % round(actions / 10)) == 0:
             logger.info(f"Net reward: {netr}")
 
+        logger.info(f"Epsilon: {agent.explorer.epsilon}")
         steps += 1
 
         if test:
             if not out_dir:
                 raise ValueError(f"Export directory for validation observations is None.")
             action = agent.act(obs)
-            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, Path(out_dir, "rollout"), 4.5, export=True)
+            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, Path(out_dir, "rollout"), 4.5, export=True, sal_export=False)
         else:
             action = agent.act_and_train(obs, reward)
         last_action = CONFIG["ACTION_SPACE"][action]
@@ -150,6 +149,14 @@ def validate_agent(ep, agent, wrapped_env, args, forests):
     agent.save(out_dir)
 
 
+def load_agent_at_episode(path, idx):
+    p = re.compile(f"_{idx}_")
+    for f in path.iterdir():
+        if p.search(str(f)):
+            return f
+    raise ValueError(f"Episode {idx} not found at {path}")
+
+
 def train(wrapped_env, args):
     """
     This function will be called for training phase.
@@ -165,17 +172,13 @@ def train(wrapped_env, args):
 
     forests = [7, 45, 100, 200, 300, 420, 3456, 5000, 300000, 600506]
     mean_len = 0
-    vals = 0
-    performed_steps = 0
+    # Train
     for ep in range(1, args.episodes + 1):
-        last_eps = agent.explorer.epsilon
-        logger.info(f"Epsilon: {last_eps}")
         if args.seed:
             forest = args.seed
         else:
             forest = forests[ep % 10]
 
-        # Train
         logger.info(f"===================== EPISODE {ep} =====================")
         ep_start = time.time()
         if (ep % 15) == 0:
@@ -186,38 +189,28 @@ def train(wrapped_env, args):
         else:
             netr, stats, steps = run_episode(agent, wrapped_env, forest, args.steps)
         save_agent_and_stats(ep, agent, forest, stats, netr, args.episodes)
-        performed_steps += steps
         if ep == 1:
             mean_len = (time.time() - ep_start)
         else:
             mean_len = (time.time() - ep_start + mean_len) / 2
         logger.info(f"===================== END {ep} - REWARD {netr} - MEAN LENGTH {round(mean_len)}s =====================")
 
-        # Validate
-        if (ep % round(args.episodes / 10)) == 0 and args.validate:
-            logger.info(f"===================== VALIDATION {vals} =====================")
-            CONFIG.test()
-            agent = get_agent(n_actions=wrapped_env.action_space.n,
-                              n_input_channels=wrapped_env.observation_space.shape[0],
-                              explorer_sample_func=wrapped_env.action_space.sample,
-                              gpu=-1,
-                              steps=args.steps * 10,
-                              test=True,
-                              gamma=0.95)
-            agent.load(Path(EXPORT_DIR, "train", f"ep_{ep}_forest{forest}"))
-            validate_agent(vals, agent, wrapped_env, args, forests)
-            logger.info(f"===================== END VALIDATION {vals} =====================")
+    # Validate
+    CONFIG.test()
+    agent = get_agent(n_actions=wrapped_env.action_space.n,
+                      n_input_channels=wrapped_env.observation_space.shape[0],
+                      explorer_sample_func=wrapped_env.action_space.sample,
+                      gpu=-1,
+                      steps=args.steps * 10 * 10,
+                      test=True,
+                      gamma=0.95)
 
-            CONFIG.train()
-            agent = get_agent(n_actions=wrapped_env.action_space.n,
-                              n_input_channels=wrapped_env.observation_space.shape[0],
-                              explorer_sample_func=wrapped_env.action_space.sample,
-                              gpu=-1,
-                              start_eps=last_eps,
-                              steps=(args.episodes * args.steps) - performed_steps,
-                              gamma=0.95)
-            agent.load(Path(EXPORT_DIR, "train", f"ep_{ep}_forest{forest}"))
-            vals += 1
+    for val in range(1, args.episodes + 1):
+        if (val % round(args.episodes / 10)) == 0 and args.validate:
+            logger.info(f"===================== VALIDATION {val} =====================")
+            agent.load(load_agent_at_episode(Path(EXPORT_DIR, "train"), val))
+            validate_agent(val, agent, wrapped_env, args, forests)
+            logger.info(f"===================== END VALIDATION {val} =====================")
 
 
 def main(args):
