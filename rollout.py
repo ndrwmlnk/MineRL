@@ -79,9 +79,6 @@ def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_s
     state_dir = Path(out_dir, "state")
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    adv_dir.mkdir(parents=True, exist_ok=True)
-    tot_adv_dir.mkdir(parents=True, exist_ok=True)
-    state_dir.mkdir(parents=True, exist_ok=True)
 
     value = cuda.to_cpu(agent.model.state)
     q_values = cuda.to_cpu(agent.model.q_values)
@@ -93,12 +90,17 @@ def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_s
     def export_obs(o, name, adv, state, tot_adv):
         save_image(overlay_q_values(observation_to_rgb(o), q_values),
                    Path(out_dir, name), size)
-        save_image(overlay_state_value(observation_to_rgb(state), value),
-                   Path(state_dir, name), size)
-        save_image(merge_images([a for a in adv]),
-                   Path(adv_dir, name), size)
-        save_image(tot_adv,
-                   Path(tot_adv_dir, name), size)
+        if sal_export:
+            adv_dir.mkdir(parents=True, exist_ok=True)
+            tot_adv_dir.mkdir(parents=True, exist_ok=True)
+            state_dir.mkdir(parents=True, exist_ok=True)
+
+            save_image(overlay_state_value(observation_to_rgb(state), value),
+                       Path(state_dir, name), size)
+            save_image(merge_images([a for a in adv]),
+                       Path(adv_dir, name), size)
+            save_image(tot_adv,
+                       Path(tot_adv_dir, name), size)
 
     if export:
         if step == 0:

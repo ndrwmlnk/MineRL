@@ -62,7 +62,6 @@ def get_agent(
         # Turn off explorer
         explorer = chainerrl.explorers.Greedy()
     else:
-
         if not start_eps:
             start_eps = CONFIG["START_EPSILON"]
         explorer = chainerrl.explorers.LinearDecayEpsilonGreedy(start_eps,

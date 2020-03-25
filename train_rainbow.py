@@ -102,8 +102,8 @@ def run_episode(agent, wrapped_env, forest, actions, out_dir=None, test=False):
             break
         if (i % round(actions / 10)) == 0:
             logger.info(f"Net reward: {netr}")
-
-        logger.info(f"Epsilon: {agent.explorer.epsilon}")
+        if not test:
+            logger.info(f"Epsilon: {agent.explorer.epsilon}")
         steps += 1
 
         if test:
@@ -172,6 +172,7 @@ def train(wrapped_env, args):
 
     forests = [7, 45, 100, 200, 300, 420, 3456, 5000, 300000, 600506]
     mean_len = 0
+
     # Train
     for ep in range(1, args.episodes + 1):
         if args.seed:
