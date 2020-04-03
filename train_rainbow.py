@@ -8,6 +8,7 @@ import shutil
 import sys
 import time
 import pickle
+from collections import defaultdict
 from logging.handlers import RotatingFileHandler
 from argparse import ArgumentParser
 from pathlib import Path
@@ -29,15 +30,30 @@ MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
 EXPORT_DIR = Path(os.environ["HOME"], f"rainbow_{CONFIG['RAINBOW_HISTORY']}")
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
-LOG_PATH = Path(EXPORT_DIR, "train.log")
+LOG_DIR = Path(EXPORT_DIR, "logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-handler = RotatingFileHandler(LOG_PATH, maxBytes=5*1024*1024, backupCount=50)
+handler = RotatingFileHandler(Path(LOG_DIR, "train.log"), maxBytes=50 * 1024 * 1024, backupCount=500)
 logging.basicConfig(handlers=[handler],
                     format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
                     datefmt='%H:%M:%S',
                     level=logging.DEBUG)
 
 logger = logging.getLogger('rainbow-train')
+
+
+def safe_log(msg, level="INFO"):
+    if level == "DEBUG":
+        n_level = 10
+    elif level == "INFO":
+        n_level = 20
+    else:
+        # ERROR
+        n_level = 40
+    try:
+        logger.log(n_level, msg)
+    except:
+        print(f"Error! Couldn't log '{msg}'.")
 
 
 def save_agent_and_stats(ep, agent, forest, stats, netr, total_episodes):
@@ -64,9 +80,9 @@ def run_curriculum_episode(agent, wrapped_env, forest, actions):
         if done or ("error" in info):
             break
         if (i % round(len(actions) / 10)) == 0:
-            logger.info(f"Net reward: {netr}")
+            safe_log(f"Net reward: {netr}")
 
-        logger.info(f"Epsilon: {agent.explorer.epsilon}")
+        safe_log(f"Epsilon: {agent.explorer.epsilon}", "DEBUG")
         steps += 1
         agent.act_and_train(obs, reward)
         action = actions[i]
@@ -101,16 +117,16 @@ def run_episode(agent, wrapped_env, forest, actions, out_dir=None, test=False):
         if done or ("error" in info):
             break
         if (i % round(actions / 10)) == 0:
-            logger.info(f"Net reward: {netr}")
+            safe_log(f"Net reward: {netr}")
         if not test:
-            logger.info(f"Epsilon: {agent.explorer.epsilon}")
+            safe_log(f"Epsilon: {agent.explorer.epsilon}", "DEBUG")
         steps += 1
 
         if test:
             if not out_dir:
                 raise ValueError(f"Export directory for validation observations is None.")
             action = agent.act(obs)
-            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, Path(out_dir, "rollout"), 4.5, export=True, sal_export=False)
+            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, Path(out_dir), 4.5, export=True, sal_export=False)
         else:
             action = agent.act_and_train(obs, reward)
         last_action = CONFIG["ACTION_SPACE"][action]
@@ -134,19 +150,20 @@ def run_episode(agent, wrapped_env, forest, actions, out_dir=None, test=False):
 def validate_agent(ep, agent, wrapped_env, args, forests):
     rewards = np.array([])
     out_dir = Path(EXPORT_DIR, "validation", f"val{ep}")
-    for forest in forests:
+    for i, forest in enumerate(forests):
         if args.seed:
             forest = args.seed
-        netr, stats, steps = run_episode(agent, wrapped_env, forest, args.steps, out_dir, test=True)
+        val_ep_dir = Path(out_dir, str(i).zfill(2))
+        netr, stats, steps = run_episode(agent, wrapped_env, forest, args.steps, val_ep_dir, test=True)
         sal_dir = Path(".", "saliency")
         try:
+            shutil.move(Path(sal_dir, "saliency-traces.txt"), Path(out_dir, "saliency-traces.txt"))
             shutil.rmtree(sal_dir)
         except OSError as e:
-            logger.error(f"Error: {sal_dir}: {e.strerror}")
+            safe_log(f"Error: {sal_dir}: {e.strerror}", "ERROR")
         rewards = np.array([*rewards, (forest, netr)])
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savetxt(Path(out_dir, "rewards.txt"), rewards)
-    agent.save(out_dir)
 
 
 def load_agent_at_episode(path, idx):
@@ -168,10 +185,13 @@ def train(wrapped_env, args):
                       explorer_sample_func=wrapped_env.action_space.sample,
                       gpu=-1,
                       steps=args.episodes * args.steps,
-                      gamma=0.95)
+                      gamma=CONFIG["GAMMA"])
 
     forests = [7, 45, 100, 200, 300, 420, 3456, 5000, 300000, 600506]
     mean_len = 0
+
+    def is_curriculum_episode(ep):
+        return (ep % round(ep / ((ep / 100) * args.curriculum))) == 0
 
     # Train
     for ep in range(1, args.episodes + 1):
@@ -180,9 +200,9 @@ def train(wrapped_env, args):
         else:
             forest = forests[ep % 10]
 
-        logger.info(f"===================== EPISODE {ep} =====================")
+        safe_log(f"===================== EPISODE {ep} =====================")
         ep_start = time.time()
-        if (ep % 15) == 0:
+        if args.curriculum > 0 and is_curriculum_episode(ep):
             netr, stats, steps = run_curriculum_episode(agent,
                                                         wrapped_env,
                                                         forest,
@@ -194,7 +214,7 @@ def train(wrapped_env, args):
             mean_len = (time.time() - ep_start)
         else:
             mean_len = (time.time() - ep_start + mean_len) / 2
-        logger.info(f"===================== END {ep} - REWARD {netr} - MEAN LENGTH {round(mean_len)}s =====================")
+        safe_log(f"===================== END {ep} - REWARD {netr} - MEAN LENGTH {round(mean_len)}s =====================")
 
     # Validate
     CONFIG.test()
@@ -204,14 +224,15 @@ def train(wrapped_env, args):
                       gpu=-1,
                       steps=args.steps * 10 * 10,
                       test=True,
-                      gamma=0.95)
+                      gamma=CONFIG["GAMMA"])
 
-    for val in range(1, args.episodes + 1):
-        if (val % round(args.episodes / 10)) == 0 and args.validate:
-            logger.info(f"===================== VALIDATION {val} =====================")
-            agent.load(load_agent_at_episode(Path(EXPORT_DIR, "train"), val))
-            validate_agent(val, agent, wrapped_env, args, forests)
-            logger.info(f"===================== END VALIDATION {val} =====================")
+    if args.validate:
+        for val in range(1, args.episodes + 1):
+            if (val % round(args.episodes / 10)) == 0:
+                safe_log(f"===================== VALIDATION {val} =====================")
+                agent.load(load_agent_at_episode(Path(EXPORT_DIR, "train"), val))
+                validate_agent(val, agent, wrapped_env, args, forests)
+                safe_log(f"===================== END VALIDATION {val} =====================")
 
 
 def main(args):
@@ -221,10 +242,10 @@ def main(args):
     # 0
     chainerrl.misc.set_random_seed(0)
     CONFIG.apply(DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD)
-    logger.info(f"Started loading {MINERL_GYM_ENV}")
+    safe_log(f"Started loading {MINERL_GYM_ENV}")
     start = time.time()
     core_env = gym.make(MINERL_GYM_ENV)
-    logger.info(f"Loaded {MINERL_GYM_ENV} in {round(time.time() - start)}s")
+    safe_log(f"Loaded {MINERL_GYM_ENV} in {round(time.time() - start)}s")
     wrapped_env = wrap_env(core_env)
 
     # wrong way to adjust the action space
@@ -233,7 +254,7 @@ def main(args):
     wrapped_env._actions[3]['forward'] = 0
 
     for i in range(wrapped_env.action_space.n):
-        logger.info("Action {0}: {1}".format(i, wrapped_env.action(i)))
+        safe_log("Action {0}: {1}".format(i, wrapped_env.action(i)))
 
     train(wrapped_env, args)
     wrapped_env.close()
@@ -246,5 +267,6 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, help="Seed for MineRL environment")
     parser.add_argument("--episodes", "-e", type=int, default=1000, help="Number of episodes")
     parser.add_argument("--steps", "-s", type=int, default=1000, help="Number of actions taken per episode")
+    parser.add_argument("--curriculum", "-c", type=int, default=0, help="Percentage of curriculum learning episodes")
     parser.add_argument("--validate", default=False, action="store_true", help="Perform validation after every 10% of total episodes")
     main(parser.parse_args())

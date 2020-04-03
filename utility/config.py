@@ -31,6 +31,7 @@ FOUR_FRAMES_AGENT = {
 DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD = {
     "train": {
         "RAINBOW_HISTORY": 2,
+        "GAMMA": 0.93,
         "START_EPSILON": 0.99,
         "FINAL_EPSILON": 0.0,
         "ALWAYS_KEYS": ['forward'],
@@ -84,6 +85,7 @@ class Configuration(dict):
     def is_valid(conf):
         if "train" in conf:
             for k in ["RAINBOW_HISTORY",
+                      "GAMMA",
                       "START_EPSILON",
                       "FINAL_EPSILON",
                       "ALWAYS_KEYS",

@@ -15,7 +15,7 @@ from chainer import cuda
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 from rainbow import wrap_env, get_agent
-from utility.config import CONFIG, SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD
+from utility.config import CONFIG, DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD
 
 
 from saliency import create_and_save_saliency_image, make_barplot, ACTIONS, save_image
@@ -68,7 +68,7 @@ def main(args):
     sleeping_amount = 0.0
 
     chainerrl.misc.set_random_seed(0)
-    CONFIG.apply(SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD)
+    CONFIG.apply(DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD)
     CONFIG.test()
 
     core_env = gym.make(MINERL_GYM_ENV)
@@ -115,7 +115,7 @@ def main(args):
 #            create_and_save_saliency_image(agent, obs, step, reward, netr, ACTIONS[action], last_action)
             last_action = ACTIONS[action]
             print("Action: ", ACTIONS[action])
-            wrapped_env.render(mode="human")
+            #wrapped_env.render(mode="human")
             obs, reward, done, info = wrapped_env.step(action)
             netr += reward
             print("Net reward: ", netr)
