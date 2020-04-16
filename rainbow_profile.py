@@ -74,8 +74,6 @@ def main(args):
         print("Action {0}: {1}".format(i, wrapped_env.action(i)))
 
     steps = int(args.steps)
-    if args.test:
-        CONFIG.test()
 
     agent = get_agent(n_actions=wrapped_env.action_space.n,
                       n_input_channels=wrapped_env.observation_space.shape[0],

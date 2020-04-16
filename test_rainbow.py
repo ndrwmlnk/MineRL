@@ -69,7 +69,6 @@ def main(args):
 
     chainerrl.misc.set_random_seed(0)
     CONFIG.apply(DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD)
-    CONFIG.test()
 
     core_env = gym.make(MINERL_GYM_ENV)
     wrapped_env = wrap_env(core_env)

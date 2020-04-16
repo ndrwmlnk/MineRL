@@ -57,8 +57,6 @@ def get_agent(
 
     # explorer
     if test:
-        chainerrl.links.to_factorized_noisy(
-            q_func, sigma_scale=CONFIG["NOISY_NET_SIGMA"])
         # Turn off explorer
         explorer = chainerrl.explorers.Greedy()
     else:

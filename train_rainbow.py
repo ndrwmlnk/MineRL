@@ -217,11 +217,10 @@ def train(wrapped_env, args):
         safe_log(f"===================== END {ep} - REWARD {netr} - MEAN LENGTH {round(mean_len)}s =====================")
 
     # Validate
-    CONFIG.test()
     agent = get_agent(n_actions=wrapped_env.action_space.n,
                       n_input_channels=wrapped_env.observation_space.shape[0],
                       explorer_sample_func=wrapped_env.action_space.sample,
-                      gpu=-1,
+                      gpu=args.gpu,
                       steps=args.steps * 10 * 10,
                       test=True,
                       gamma=CONFIG["GAMMA"])

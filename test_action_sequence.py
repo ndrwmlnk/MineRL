@@ -54,7 +54,6 @@ def main(args):
     """
     chainerrl.misc.set_random_seed(0)
     CONFIG.apply(SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD)
-    CONFIG.test()
 
     actions_file = Path(args.actions)
     if not actions_file.is_file():

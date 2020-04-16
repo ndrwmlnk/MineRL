@@ -137,7 +137,6 @@ def main(args):
     sal_std = 4.5
 
     if args.test:
-        CONFIG.test()
         pattern = re.compile(r"_(\d+)_")
         out_dir = Path(OUT_DIR, "test", pattern.search(load_dir.name).group(1))
     else:
