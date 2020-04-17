@@ -3,7 +3,6 @@
 import minerl
 
 import os
-import re
 import shutil
 import sys
 from argparse import ArgumentParser
@@ -84,10 +83,9 @@ def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_s
     q_values = cuda.to_cpu(agent.model.q_values)
     if sal_export:
         make_barplot(cuda.to_cpu(agent.model.advantage), step)
+        rollout = create_and_save_saliency_image(agent, obs, step, reward, netr, action, last_action, sal_std=sal_std, export=sal_export)
 
-    rollout = create_and_save_saliency_image(agent, obs, step, reward, netr, action, last_action, sal_std=sal_std, export=sal_export)
-
-    def export_obs(o, name, adv, state, tot_adv):
+    def export_obs(o, name, adv=None, state=None, tot_adv=None):
         save_image(overlay_q_values(observation_to_rgb(o), q_values),
                    Path(out_dir, name), size)
         if sal_export:
@@ -103,15 +101,12 @@ def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_s
                        Path(tot_adv_dir, name), size)
 
     if export:
-        if step == 0:
-            for i, o in enumerate(np.split(np.array(obs), CONFIG["RAINBOW_HISTORY"])):
-                name = f"{str(i).zfill(4)}.png"
-                export_obs(o, name, *rollout[i])
-
-        else:
-            o = np.split(np.array(obs), CONFIG["RAINBOW_HISTORY"])[-1]
-            name = f"{str(step + CONFIG['RAINBOW_HISTORY'] - 1).zfill(4)}.png"
+        o = np.split(np.array(obs), CONFIG["RAINBOW_HISTORY"])[-1]
+        name = f"{str(step + CONFIG['RAINBOW_HISTORY'] - 1).zfill(4)}.png"
+        if sal_export:
             export_obs(o, name, *rollout[-1])
+        else:
+            export_obs(o, name)
 
 
 def main(args):
@@ -136,25 +131,11 @@ def main(args):
     load_dir = Path(args.load)
     sal_std = 4.5
 
-    if args.test:
-        pattern = re.compile(r"_(\d+)_")
-        out_dir = Path(OUT_DIR, "test", pattern.search(load_dir.name).group(1))
+    if args.seed:
+        wrapped_env.seed(args.seed)
+        out_dir = Path(OUT_DIR, f"{load_dir.name}_{args.seed}")
     else:
-        pattern = re.compile(r"^(ep_\d+)_")
-        out_dir = Path(OUT_DIR, "train", pattern.search(load_dir.name).group(1))
-        # Compute START_EPSILON
-        ep_name = load_dir.name
-        pattern = re.compile(r"^ep_(\d+)_forest(\d+)")
-        m = pattern.search(ep_name)
-        ep_idx = int(m.group(1))
-        forest = int(m.group(2))
-        expl = chainerrl.explorers.LinearDecayEpsilonGreedy(CONFIG["START_EPSILON"],
-                                                            CONFIG["FINAL_EPSILON"],
-                                                            steps,
-                                                            wrapped_env.action_space.sample)
-        start_epsilon = expl.compute_epsilon((ep_idx * args.steps) + 1)
-        print(f"Initial epsilon: {start_epsilon}, Saliency std: {sal_std}, Forest seed: {forest}")
-        wrapped_env.seed(forest)
+        out_dir = Path(OUT_DIR, load_dir.name)
 
     agent = get_agent(n_actions=wrapped_env.action_space.n,
                       n_input_channels=wrapped_env.observation_space.shape[0],
@@ -162,8 +143,8 @@ def main(args):
                       gpu=args.gpu,
                       steps=steps,
                       start_eps=start_epsilon,
-                      test=args.test,
-                      gamma=0.95)
+                      test=True,
+                      gamma=CONFIG["GAMMA"])
 
     print(f"Loading agent from {load_dir}")
     agent.load(load_dir)
@@ -184,12 +165,9 @@ def main(args):
             if done or ("error" in info):
                 break
 
-            if args.test:
-                action = agent.act(obs)
-            else:
-                action = agent.act_and_train(obs, reward)
+            action = agent.act(obs)
 
-            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, out_dir, sal_std, export=export)
+            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, out_dir, sal_std, export=export, sal_export=args.saliency)
             last_action = CONFIG["ACTION_SPACE"][action]
 
             states.append(cuda.to_cpu(agent.model.state))
@@ -203,22 +181,20 @@ def main(args):
             obs, reward, done, info = wrapped_env.step(action)
             netr += reward
 
-        if args.test:
-            agent.stop_episode()
-        else:
-            agent.stop_episode_and_train(obs, reward, done)
+        agent.stop_episode()
 
         return np.array(states), np.array(advantages).T
 
-    run_episode(export=False)
-    sal_dir = Path(".", "saliency")
-    p = Path(sal_dir, "std.txt")
-    sal_std = float(np.loadtxt(p))
-    try:
-        shutil.rmtree(sal_dir)
-    except OSError as e:
-        print(f"Error: {sal_dir} : {e.strerror}")
-        sys.exit(1)
+    if args.saliency:
+        run_episode(export=False)
+        sal_dir = Path(".", "saliency")
+        p = Path(sal_dir, "std.txt")
+        sal_std = float(np.loadtxt(p))
+        try:
+            shutil.rmtree(sal_dir)
+        except OSError as e:
+            print(f"Error: {sal_dir} : {e.strerror}")
+            sys.exit(1)
 
     states, advantages = run_episode(export=True)
 
@@ -244,8 +220,9 @@ if __name__ == "__main__":
         os.environ["JAVA_HOME"] = str(ARCH_JAVA_PATH)
     parser = ArgumentParser()
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
-    parser.add_argument("--steps", "-s", default=1000)
-    parser.add_argument("--test", default=False, action="store_true")
+    parser.add_argument("--seed", type=int, help="Seed for MineRL environment")
+    parser.add_argument("--saliency", default=False, action="store_true")
+    parser.add_argument("--steps", "-s", type=int, default=1000)
     parser.add_argument("--load", default="models/rainbow")
 
     main(parser.parse_args())
