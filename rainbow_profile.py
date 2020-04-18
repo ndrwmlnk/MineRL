@@ -101,7 +101,7 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
-    parser.add_argument("--steps", default=1000)
+    parser.add_argument("--steps", type=int, default=1000)
     parser.add_argument("--test", default=False, action="store_true")
 
     main(parser.parse_args())

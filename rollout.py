@@ -19,7 +19,7 @@ from PIL import Image, ImageDraw, ImageFont
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 from rainbow import wrap_env, get_agent
-from saliency import save_image, make_barplot, create_and_save_saliency_image, observation_to_rgb
+from saliency import save_image, make_barplot, create_and_save_saliency_image, observation_to_rgb, get_depth
 from utility.config import CONFIG, DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD
 
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
@@ -72,22 +72,26 @@ def overlay_q_values(obs, values, pos=(0, 0)):
     return overlay_text(obs, text, pos, fill="")
 
 
-def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_std=None, size=(256, 256), export=True, sal_export=True):
+def save_obs(agent, obs_array, step, reward, netr, action, last_action, out_dir, sal_std=None, size=(256, 256), export=True, sal_export=True):
     adv_dir = Path(out_dir, "advantage")
     tot_adv_dir = Path(out_dir, "total_advantage")
     state_dir = Path(out_dir, "state")
-
-    out_dir.mkdir(parents=True, exist_ok=True)
+    rgb_dir = Path(out_dir, "rgb")
+    depth_dir = Path(out_dir, "depth")
+    rgb_dir.mkdir(parents=True, exist_ok=True)
+    depth_dir.mkdir(parents=True, exist_ok=True)
 
     value = cuda.to_cpu(agent.model.state)
     q_values = cuda.to_cpu(agent.model.q_values)
     if sal_export:
         make_barplot(cuda.to_cpu(agent.model.advantage), step)
-        rollout = create_and_save_saliency_image(agent, obs, step, reward, netr, action, last_action, sal_std=sal_std, export=sal_export)
+        rollout = create_and_save_saliency_image(agent, obs_array, step, reward, netr, action, last_action, sal_std=sal_std, export=sal_export)
 
     def export_obs(o, name, adv=None, state=None, tot_adv=None):
         save_image(overlay_q_values(observation_to_rgb(o), q_values),
-                   Path(out_dir, name), size)
+                   Path(rgb_dir, name), size)
+        if o.shape[0] == 4:
+            save_image(get_depth(o), Path(depth_dir, name), size)
         if sal_export:
             adv_dir.mkdir(parents=True, exist_ok=True)
             tot_adv_dir.mkdir(parents=True, exist_ok=True)
@@ -101,8 +105,8 @@ def save_obs(agent, obs, step, reward, netr, action, last_action, out_dir, sal_s
                        Path(tot_adv_dir, name), size)
 
     if export:
-        o = np.split(np.array(obs), CONFIG["RAINBOW_HISTORY"])[-1]
-        name = f"{str(step + CONFIG['RAINBOW_HISTORY'] - 1).zfill(4)}.png"
+        o = np.split(obs_array, CONFIG["RAINBOW_HISTORY"])[-1]
+        name = f"{str(step).zfill(4)}.png"
         if sal_export:
             export_obs(o, name, *rollout[-1])
         else:
@@ -115,7 +119,6 @@ def main(args):
     """
     chainerrl.misc.set_random_seed(0)
     CONFIG.apply(DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD)
-    start_epsilon = None
     core_env = gym.make(MINERL_GYM_ENV)
     wrapped_env = wrap_env(core_env)
 
@@ -142,7 +145,6 @@ def main(args):
                       explorer_sample_func=wrapped_env.action_space.sample,
                       gpu=args.gpu,
                       steps=steps,
-                      start_eps=start_epsilon,
                       test=True,
                       gamma=CONFIG["GAMMA"])
 
@@ -150,7 +152,8 @@ def main(args):
     agent.load(load_dir)
 
     def run_episode(export):
-        wrapped_env.seed(420)
+        if args.seed:
+            wrapped_env.seed(args.seed)
         obs = wrapped_env.reset()
         done = False
         last_action = None
@@ -161,13 +164,18 @@ def main(args):
         states = []
         advantages = []
 
-        for i in range(steps):
+        for i in range(0, steps):
             if done or ("error" in info):
                 break
 
+            obs_array = np.array(obs)
+            if np.split(np.array(obs), CONFIG["RAINBOW_HISTORY"])[-1].shape[0] == 4:
+                for j, frame in enumerate(obs._frames):
+                    obs._frames[j] = frame[:-1]
+
             action = agent.act(obs)
 
-            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, out_dir, sal_std, export=export, sal_export=args.saliency)
+            save_obs(agent, obs_array, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, out_dir, sal_std, export=export, sal_export=args.saliency)
             last_action = CONFIG["ACTION_SPACE"][action]
 
             states.append(cuda.to_cpu(agent.model.state))

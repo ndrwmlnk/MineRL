@@ -13,7 +13,7 @@ from utility.config import CONFIG
 
 ACTIONS = CONFIG["ACTION_SPACE"]
 
-#SALIENCY_STD = 4.842388453060134
+# SALIENCY_STD = 4.842388453060134
 SALIENCY_STD = 12.603969568972966
 SALIENCY_MAX = (1.5 * SALIENCY_STD)
 FUDGE_FACTOR = 255 / SALIENCY_MAX
@@ -47,8 +47,23 @@ def chw_to_hwc(array):
         return array
 
 
+def get_depth(obs):
+    if obs.shape[0] == 4:
+        obs = obs[-1]
+        obs_min = obs.min()
+        obs_max = obs.max()
+        obs = 255.0 * (obs - obs_min) / (obs_max - obs_min)
+
+        return obs.astype('uint8')
+    else:
+        raise ValueError(f"Observation has no depth value. Shape: {obs.shape}")
+
+
 def observation_to_rgb(obs):
-    obs = chw_to_hwc(obs)
+    if obs.shape[0] == 3:
+        obs = chw_to_hwc(obs)
+    elif obs.shape[0] == 4:
+        obs = chw_to_hwc(obs[:-1])
 
     # Rescale observation
     obs_min = obs.min()
@@ -65,7 +80,6 @@ def make_barplot(score, step, name="advantage"):
         m = score.max()
         score -= score.min()
         score = m * score / score.max()
-
 
     barplts_dir = Path(OUT_PATH, f"{name}_barplots")
     mkdir_p(barplts_dir)
@@ -94,7 +108,8 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
     obs_dir = Path(OUT_PATH, "observations")
     mkdir_p(obs_dir)
 
-    obs = np.array(obs)
+    if not isinstance(obs, np.ndarray):
+        obs = np.array(obs)
     RAINBOW_HISTORY = CONFIG["RAINBOW_HISTORY"]
 
     if not last_action:
@@ -318,8 +333,8 @@ def score_frame(agent, obs, idx, out_dir, step, n_frames, radius=5, density=10):
             mask = _get_mask([i, j], size=[height, width], radius=radius)
 
             # if not mask_path.exists():
-                # save_image(observation_to_rgb(mask), mask_path)
-                # save_image(observation_to_rgb(1 - mask), Path(pix_dir, f"one_minus_mask.png"))
+            # save_image(observation_to_rgb(mask), mask_path)
+            # save_image(observation_to_rgb(1 - mask), Path(pix_dir, f"one_minus_mask.png"))
 
             perturbed_imgs = occlude_ith_frame(obs, idx, mask, pix_dir, step, n_frames)
 
@@ -360,16 +375,16 @@ def occlude_single_frame(frame, msk, out_dir, step, radius=3):
                    Path(act_dir, f"step{step}_{name}.png"))
 
     img_msk = frame * msk
-    #export_image_for_obs(img_msk, "obs_dot_mask")
+    # export_image_for_obs(img_msk, "obs_dot_mask")
 
     gf = gaussian(chw_to_hwc(frame), sigma=radius, multichannel=True)
-    #export_image_for_obs(gf, "gaussian_filter")
+    # export_image_for_obs(gf, "gaussian_filter")
 
     gf_one_mmask = gf.transpose(2, 0, 1) * (1 - msk)
-    #export_image_for_obs(gf_one_mmask, "gaussian_filter_times_one_minus_mask")
+    # export_image_for_obs(gf_one_mmask, "gaussian_filter_times_one_minus_mask")
 
     p_img = img_msk + gf_one_mmask
-    #export_image_for_obs(p_img, "perturbed_obs")
+    # export_image_for_obs(p_img, "perturbed_obs")
     return p_img
 
 
