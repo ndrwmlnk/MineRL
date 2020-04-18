@@ -4,6 +4,7 @@ import minerl
 
 import os
 import sys
+from pathlib import Path
 
 import chainerrl
 import gym
@@ -12,8 +13,7 @@ from chainer import cuda
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 from rainbow import wrap_env, get_agent
-from utility.config import CONFIG, DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD
-
+from utility.config import CONFIG
 
 # All the evaluations will be evaluated on MineRLObtainDiamond-v0 environment
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
@@ -26,7 +26,10 @@ def main(args):
     """
 
     chainerrl.misc.set_random_seed(0)
-    CONFIG.apply(DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD)
+    if not args.conf:
+        CONFIG.load(Path(args.load, "config.json"))
+    else:
+        CONFIG.load(Path(args.conf))
 
     core_env = gym.make(MINERL_GYM_ENV)
     wrapped_env = wrap_env(core_env)
@@ -65,7 +68,7 @@ def main(args):
             state = cuda.to_cpu(agent.model.state)
             print("State: ", state)
             print("Action: ", CONFIG["ACTION_SPACE"][action])
-            #wrapped_env.render(mode="human")
+            # wrapped_env.render(mode="human")
             obs, reward, done, info = wrapped_env.step(action)
             netr += reward
             print("Net reward: ", netr)

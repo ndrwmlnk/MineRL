@@ -14,7 +14,7 @@ import numpy as np
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 from rainbow import wrap_env, get_agent
-from utility.config import CONFIG, SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD
+from utility.config import CONFIG
 
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
 
@@ -59,11 +59,9 @@ def main(args):
     This function will be called for training phase.
     """
     chainerrl.misc.set_random_seed(0)
-    CONFIG.apply(SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD)
+    CONFIG.load(Path(args.conf))
     core_env = gym.make(MINERL_GYM_ENV)
     wrapped_env = wrap_env(core_env)
-
-    forest = 420
 
     # wrong way to adjust the action space
     wrapped_env._actions[1]['forward'] = 0
@@ -82,7 +80,7 @@ def main(args):
                       steps=steps,
                       test=args.test,
                       gamma=0.95)
-    action_lengths = profile_episode(agent, wrapped_env, forest, steps, args.test)
+    action_lengths = profile_episode(agent, wrapped_env, args.seed, steps, args.test)
     np.savetxt(Path(".", f"{str(steps).zfill(4)}_steps_profiling.txt"),
                np.array(action_lengths, dtype='float32'))
     wrapped_env.close()
@@ -102,6 +100,8 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
     parser.add_argument("--steps", type=int, default=1000)
+    parser.add_argument("--seed", type=int, default=420, help="Seed for MineRL environment")
+    parser.add_argument("--conf", "-f", help="Path to configuration file")
     parser.add_argument("--test", default=False, action="store_true")
 
     main(parser.parse_args())

@@ -8,15 +8,9 @@ import PIL
 from chainer import cuda
 from PIL import Image
 from skimage.filters import gaussian
-
 from utility.config import CONFIG
 
-ACTIONS = CONFIG["ACTION_SPACE"]
-
-# SALIENCY_STD = 4.842388453060134
-SALIENCY_STD = 12.603969568972966
-SALIENCY_MAX = (1.5 * SALIENCY_STD)
-FUDGE_FACTOR = 255 / SALIENCY_MAX
+FUDGE_FACTOR = 0.0
 
 LAST_ACTION = None
 
@@ -85,14 +79,13 @@ def make_barplot(score, step, name="advantage"):
     mkdir_p(barplts_dir)
 
     # Thanks to https://matplotlib.org/3.1.1/gallery/lines_bars_and_markers/barchart.html
-    labels = list(ACTIONS.values())
-    x = np.arange(len(labels))
+    x = np.arange(len(CONFIG["ACTION_SPACE"]))
     fig, ax = plt.subplots()
     ax.bar(x, score, label=name)
 
     ax.set_title(f'{name} by action')
     ax.set_xticks(x)
-    ax.set_xticklabels(labels)
+    ax.set_xticklabels(CONFIG["ACTION_SPACE"])
     ax.set_ylim([-score.max(), score.max() + (score.max() / 10)])
     ax.legend()
 
@@ -110,6 +103,7 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
 
     if not isinstance(obs, np.ndarray):
         obs = np.array(obs)
+    ACTIONS = CONFIG["ACTION_SPACE"]
     RAINBOW_HISTORY = CONFIG["RAINBOW_HISTORY"]
 
     if not last_action:
@@ -117,10 +111,10 @@ def create_and_save_saliency_image(agent, obs, step, s_reward, reward, next_acti
 
     suptitle = f"Step: {step}, Step reward: {s_reward}, Tot reward: {reward}, Last: {last_action}, Next: {next_action}"
 
-    squared_fig, squared_axs = plt.subplots(RAINBOW_HISTORY, len(ACTIONS.keys()))
+    squared_fig, squared_axs = plt.subplots(RAINBOW_HISTORY, len(ACTIONS))
     squared_fig.suptitle(suptitle)
 
-    n_imgs = (len(ACTIONS.keys()) * 2)
+    n_imgs = len(ACTIONS) * 2
     fig, axs = plt.subplots(RAINBOW_HISTORY, n_imgs + 1)
     fig.suptitle(suptitle)
 

@@ -15,7 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 from rainbow import wrap_env, get_agent
 from rollout import save_obs, OUT_DIR
-from utility.config import CONFIG, SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD
+from utility.config import CONFIG
 
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
 
@@ -53,7 +53,7 @@ def main(args):
     This function will be called for training phase.
     """
     chainerrl.misc.set_random_seed(0)
-    CONFIG.apply(SINGLE_FRAME_AGENT_ATTACK_AND_FORWARD)
+    CONFIG.load(Path(args.conf))
 
     actions_file = Path(args.actions)
     if not actions_file.is_file():
@@ -134,6 +134,7 @@ if __name__ == "__main__":
         os.environ["JAVA_HOME"] = str(ARCH_JAVA_PATH)
     parser = ArgumentParser()
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
+    parser.add_argument("--conf", "-f", help="Path to configuration file")
     parser.add_argument("--rollout", default=False, action="store_true")
     parser.add_argument("--steps", "-s", type=int, default=32, help="Number of actions taken per episode")
     parser.add_argument("--actions")

@@ -9,7 +9,6 @@ from chainerrl.wrappers.atari_wrappers import ScaledFloatFrame as SFF
 
 from utility.env_wrappers import (SerialDiscreteActionWrapper, MoveAxisWrapper, FrameSkip, FrameStack, ObtainPoVWrapper)
 from utility.q_functions import DistributionalDuelingDQN
-
 from utility.config import CONFIG
 
 

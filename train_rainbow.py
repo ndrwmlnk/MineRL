@@ -8,9 +8,9 @@ import shutil
 import sys
 import time
 import pickle
-from collections import defaultdict
-from logging.handlers import RotatingFileHandler
 from argparse import ArgumentParser
+from datetime import datetime
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import chainerrl
@@ -22,12 +22,13 @@ sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 from rainbow import wrap_env, get_agent
 from rollout import save_obs
 from test_action_sequence import get_actions
-from utility.config import CONFIG, DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD
+from utility.config import CONFIG
 
 # All the evaluations will be evaluated on MineRLObtainDiamond-v0 environment
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
 
-EXPORT_DIR = Path(os.environ["HOME"], f"rainbow_{CONFIG['RAINBOW_HISTORY']}")
+now_obj = datetime.now()
+EXPORT_DIR = Path(os.environ["HOME"], f"rainbow_{now_obj.strftime('%d-%b-%Y_%H:%M:%S')}")
 EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 LOG_DIR = Path(EXPORT_DIR, "logs")
@@ -126,7 +127,7 @@ def run_episode(agent, wrapped_env, forest, actions, out_dir=None, test=False):
             if not out_dir:
                 raise ValueError(f"Export directory for validation observations is None.")
             action = agent.act(obs)
-            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, Path(out_dir), 4.5, export=True, sal_export=False)
+            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, Path(out_dir), 0.0, export=True, sal_export=False)
         else:
             action = agent.act_and_train(obs, reward)
         last_action = CONFIG["ACTION_SPACE"][action]
@@ -183,7 +184,7 @@ def train(wrapped_env, args):
     agent = get_agent(n_actions=wrapped_env.action_space.n,
                       n_input_channels=wrapped_env.observation_space.shape[0],
                       explorer_sample_func=wrapped_env.action_space.sample,
-                      gpu=-1,
+                      gpu=args.gpu,
                       steps=args.episodes * args.steps,
                       gamma=CONFIG["GAMMA"])
 
@@ -240,7 +241,11 @@ def main(args):
     """
     # 0
     chainerrl.misc.set_random_seed(0)
-    CONFIG.apply(DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD)
+    if not args.conf:
+        CONFIG.load(Path(args.load, "config.json"))
+    else:
+        CONFIG.load(Path(args.conf))
+    CONFIG.dump(Path(EXPORT_DIR, "config.json"))
     safe_log(f"Started loading {MINERL_GYM_ENV}")
     start = time.time()
     core_env = gym.make(MINERL_GYM_ENV)
@@ -263,6 +268,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
     parser.add_argument("--load", "-l", help="Path to model weights")
+    parser.add_argument("--conf", "-f", help="Path to configuration file")
     parser.add_argument("--seed", type=int, help="Seed for MineRL environment")
     parser.add_argument("--episodes", "-e", type=int, default=1000, help="Number of episodes")
     parser.add_argument("--steps", "-s", type=int, default=1000, help="Number of actions taken per episode")

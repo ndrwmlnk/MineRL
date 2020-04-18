@@ -20,10 +20,9 @@ sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 from rainbow import wrap_env, get_agent
 from saliency import save_image, make_barplot, create_and_save_saliency_image, observation_to_rgb, get_depth
-from utility.config import CONFIG, DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD
+from utility.config import CONFIG
 
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
-
 OUT_DIR = Path(os.environ["HOME"], "minerl_rollouts")
 
 
@@ -118,7 +117,10 @@ def main(args):
     This function will be called for training phase.
     """
     chainerrl.misc.set_random_seed(0)
-    CONFIG.apply(DOUBLE_FRAME_AGENT_ATTACK_AND_FORWARD)
+    if not args.conf:
+        CONFIG.load(Path(args.load, "config.json"))
+    else:
+        CONFIG.load(Path(args.conf))
     core_env = gym.make(MINERL_GYM_ENV)
     wrapped_env = wrap_env(core_env)
 
@@ -228,6 +230,7 @@ if __name__ == "__main__":
         os.environ["JAVA_HOME"] = str(ARCH_JAVA_PATH)
     parser = ArgumentParser()
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
+    parser.add_argument("--conf", "-f", help="Path to configuration file")
     parser.add_argument("--seed", type=int, help="Seed for MineRL environment")
     parser.add_argument("--saliency", default=False, action="store_true")
     parser.add_argument("--steps", "-s", type=int, default=1000)
