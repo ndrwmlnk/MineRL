@@ -241,10 +241,7 @@ def main(args):
     """
     # 0
     chainerrl.misc.set_random_seed(0)
-    if not args.conf:
-        CONFIG.load(Path(args.load, "config.json"))
-    else:
-        CONFIG.load(Path(args.conf))
+    CONFIG.load(Path(args.conf))
     CONFIG.dump(Path(EXPORT_DIR, "config.json"))
     safe_log(f"Started loading {MINERL_GYM_ENV}")
     start = time.time()
@@ -267,7 +264,6 @@ def main(args):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
-    parser.add_argument("--load", "-l", help="Path to model weights")
     parser.add_argument("--conf", "-f", help="Path to configuration file")
     parser.add_argument("--seed", type=int, help="Seed for MineRL environment")
     parser.add_argument("--episodes", "-e", type=int, default=1000, help="Number of episodes")

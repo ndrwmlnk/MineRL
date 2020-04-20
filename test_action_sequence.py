@@ -75,7 +75,7 @@ def main(args):
     for i in range(wrapped_env.action_space.n):
         print("Action {0}: {1}".format(i, wrapped_env.action(i)))
 
-    forest = 420
+    forest = args.seed
     wrapped_env.seed(forest)
 
     agent = get_agent(n_actions=wrapped_env.action_space.n,
@@ -136,6 +136,7 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
     parser.add_argument("--conf", "-f", help="Path to configuration file")
     parser.add_argument("--rollout", default=False, action="store_true")
+    parser.add_argument("--seed", type=int, default=420, help="Environment seed")
     parser.add_argument("--steps", "-s", type=int, default=32, help="Number of actions taken per episode")
     parser.add_argument("--actions")
 

@@ -4,6 +4,7 @@ import minerl
 
 import os
 import sys
+from argparse import ArgumentParser
 from pathlib import Path
 
 import chainerrl
@@ -49,7 +50,7 @@ def main(args):
                       explorer_sample_func=wrapped_env.action_space.sample,
                       gpu=args.gpu,
                       steps=steps,
-                      test=not args.train)
+                      test=True)
 
     print(f"Loading agent from {args.load}")
     agent.load(args.load)
@@ -75,3 +76,12 @@ def main(args):
             step += 1
 
     wrapped_env.close()
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser()
+    parser.add_argument("--gpu", default=-1, action="store_const", const=0)
+    parser.add_argument("--load", "-l", help="Path to model weights")
+    parser.add_argument("--conf", "-f", help="Path to configuration file")
+    parser.add_argument("--seed", type=int, help="Seed for MineRL environment")
+    main(parser.parse_args())
