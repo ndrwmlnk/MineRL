@@ -4,6 +4,7 @@
 All dependencies (except obviously for JDK 1.8) can be installed with
 
 ```shell script
+git checkout rainbow2 # This is to ensure that the environment is always the same
 pip install -r requirements.txt
 ``` 
 
@@ -89,9 +90,26 @@ To prevent this it could be useful to:
 
 ## Testing the agent
 
-To visualize the agent performance in a random environment you can run the following command:
+To run the trained agent in a random environment you can run the following command:
 
 ```shell script
 git checkout rainbow2
 python test_rainbow.py -l model/rainbow/rainbow_2
+```
+
+### Keyboard agent
+
+With this script you can play in the environment as if you were the agent by running this command:
+
+```shell script
+python minerl_keyboard.py
+```
+
+The actions keymaps are the following:
+
+```
+1 -> Jump and go forward
+2 -> Attack
+3 -> Left
+4 -> Right
 ```
