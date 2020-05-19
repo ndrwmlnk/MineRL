@@ -106,7 +106,6 @@ def run_episode(agent, wrapped_env, forest, actions, out_dir=None, test=False):
     wrapped_env.seed(forest)
     obs = wrapped_env.reset()
     done = False
-    last_action = None
     info = {}
     netr = 0
     reward = 0
@@ -127,10 +126,9 @@ def run_episode(agent, wrapped_env, forest, actions, out_dir=None, test=False):
             if not out_dir:
                 raise ValueError(f"Export directory for validation observations is None.")
             action = agent.act(obs)
-            save_obs(agent, obs, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, Path(out_dir), 0.0, export=True, sal_export=False)
+            save_obs(agent, obs, i, Path(out_dir))
         else:
             action = agent.act_and_train(obs, reward)
-        last_action = CONFIG["ACTION_SPACE"][action]
         stats.append((agent.model.state, agent.model.q_values, agent.model.advantage))
 
         if action == 1:

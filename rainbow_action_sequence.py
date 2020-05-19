@@ -109,7 +109,7 @@ def main(args):
 
         obs, reward, done, info = wrapped_env.step(action)
         if args.rollout:
-            save_obs(agent, obs, i,reward, netr, action, last_action, out_dir, 4.5)
+            save_obs(agent, obs, i, out_dir)
         else:
             wrapped_env.render(mode="human")
         time.sleep(1.0)
