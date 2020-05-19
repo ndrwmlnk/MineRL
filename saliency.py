@@ -4,11 +4,11 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import PIL
 from chainer import cuda
 from PIL import Image
 from skimage.filters import gaussian
 from utility.config import CONFIG
+from utility.imgutils import save_image, observation_to_rgb, chw_to_hwc
 
 FUDGE_FACTOR = 0.0
 
@@ -19,52 +19,8 @@ def mkdir_p(path):
     path.mkdir(parents=True, exist_ok=True)
 
 
-def save_image(array, path, size=None):
-    if isinstance(array, PIL.Image.Image):
-        img = array
-    else:
-        img = Image.fromarray(array)
-    if size:
-        img.resize(size, resample=Image.BILINEAR)
-    img.save(path)
-
-
 OUT_PATH = Path(".", "saliency")
 mkdir_p(OUT_PATH)
-
-
-def chw_to_hwc(array):
-    shape = array.shape
-    if shape[0] == 3 and shape[2] == 64:  # CHW
-        return array.transpose(1, 2, 0)
-    else:
-        return array
-
-
-def get_depth(obs):
-    if obs.shape[0] == 4:
-        obs = obs[-1]
-        obs_min = obs.min()
-        obs_max = obs.max()
-        obs = 255.0 * (obs - obs_min) / (obs_max - obs_min)
-
-        return obs.astype('uint8')
-    else:
-        raise ValueError(f"Observation has no depth value. Shape: {obs.shape}")
-
-
-def observation_to_rgb(obs):
-    if obs.shape[0] == 3:
-        obs = chw_to_hwc(obs)
-    elif obs.shape[0] == 4:
-        obs = chw_to_hwc(obs[:-1])
-
-    # Rescale observation
-    obs_min = obs.min()
-    obs_max = obs.max()
-    obs_rgb = 255.0 * (obs - obs_min) / (obs_max - obs_min)
-
-    return obs_rgb.astype('uint8')
 
 
 def make_barplot(score, step, name="advantage"):

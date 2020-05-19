@@ -78,7 +78,7 @@ In this context we define a curriculum episodes as an episode where the agent is
 A couple of good action sequences can be found in the `action-sequences/` directory and can be visualized with:
 
 ```shell script
-python test_action_sequence.py -s 64 --conf model/rainbow/rainbow_2/config.json --actions action-sequences/420_4_64.txt
+python rainbow_action_sequence.py -s 64 --conf model/rainbow/rainbow_2/config.json --actions action-sequences/420_4_64.txt
 ```
 
 This helps the agent to understand more easily what yields reward but for the action sequence to work at all we need to be training in the same forest which leads to overfitting. You can verify this by watching the first 6 blocks destroyed by the agent in any testing episodes with a seed of `420`.

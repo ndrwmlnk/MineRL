@@ -19,7 +19,7 @@ from PIL import Image, ImageDraw, ImageFont
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 from rainbow import wrap_env, get_agent
-from saliency import save_image, make_barplot, create_and_save_saliency_image, observation_to_rgb, get_depth
+from utility.imgutils import save_image, observation_to_rgb, get_depth
 from utility.config import CONFIG
 
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
@@ -71,45 +71,23 @@ def overlay_q_values(obs, values, pos=(0, 0)):
     return overlay_text(obs, text, pos, fill="")
 
 
-def save_obs(agent, obs_array, step, reward, netr, action, last_action, out_dir, sal_std=None, size=(256, 256), export=True, sal_export=True):
-    adv_dir = Path(out_dir, "advantage")
-    tot_adv_dir = Path(out_dir, "total_advantage")
-    state_dir = Path(out_dir, "state")
+def save_obs(agent, obs_array, step, out_dir, size=(256, 256)):
     rgb_dir = Path(out_dir, "rgb")
     depth_dir = Path(out_dir, "depth")
     rgb_dir.mkdir(parents=True, exist_ok=True)
     depth_dir.mkdir(parents=True, exist_ok=True)
 
-    value = cuda.to_cpu(agent.model.state)
     q_values = cuda.to_cpu(agent.model.q_values)
-    if sal_export:
-        make_barplot(cuda.to_cpu(agent.model.advantage), step)
-        rollout = create_and_save_saliency_image(agent, obs_array, step, reward, netr, action, last_action, sal_std=sal_std, export=sal_export)
 
-    def export_obs(o, name, adv=None, state=None, tot_adv=None):
+    def export_obs(o, name):
         save_image(overlay_q_values(observation_to_rgb(o), q_values),
                    Path(rgb_dir, name), size)
         if o.shape[0] == 4:
             save_image(get_depth(o), Path(depth_dir, name), size)
-        if sal_export:
-            adv_dir.mkdir(parents=True, exist_ok=True)
-            tot_adv_dir.mkdir(parents=True, exist_ok=True)
-            state_dir.mkdir(parents=True, exist_ok=True)
 
-            save_image(overlay_state_value(observation_to_rgb(state), value),
-                       Path(state_dir, name), size)
-            save_image(merge_images([a for a in adv]),
-                       Path(adv_dir, name), size)
-            save_image(tot_adv,
-                       Path(tot_adv_dir, name), size)
-
-    if export:
-        o = np.split(obs_array, CONFIG["RAINBOW_HISTORY"])[-1]
-        name = f"{str(step).zfill(4)}.png"
-        if sal_export:
-            export_obs(o, name, *rollout[-1])
-        else:
-            export_obs(o, name)
+    o = np.split(obs_array, CONFIG["RAINBOW_HISTORY"])[-1]
+    name = f"{str(step).zfill(4)}.png"
+    export_obs(o, name)
 
 
 def main(args):
@@ -134,7 +112,6 @@ def main(args):
 
     steps = args.steps
     load_dir = Path(args.load)
-    sal_std = 4.5
 
     if args.seed:
         wrapped_env.seed(args.seed)
@@ -153,14 +130,12 @@ def main(args):
     print(f"Loading agent from {load_dir}")
     agent.load(load_dir)
 
-    def run_episode(export):
+    def run_episode():
         if args.seed:
             wrapped_env.seed(args.seed)
         obs = wrapped_env.reset()
         done = False
-        last_action = None
         info = {}
-        reward = 0
         netr = 0
 
         states = []
@@ -177,8 +152,7 @@ def main(args):
 
             action = agent.act(obs)
 
-            save_obs(agent, obs_array, i, reward, netr, CONFIG["ACTION_SPACE"][action], last_action, out_dir, sal_std, export=export, sal_export=args.saliency)
-            last_action = CONFIG["ACTION_SPACE"][action]
+            save_obs(agent, obs_array, i, out_dir)
 
             states.append(cuda.to_cpu(agent.model.state))
             advantages.append(list(cuda.to_cpu(agent.model.advantage)))
@@ -195,18 +169,7 @@ def main(args):
 
         return np.array(states), np.array(advantages).T
 
-    if args.saliency:
-        run_episode(export=False)
-        sal_dir = Path(".", "saliency")
-        p = Path(sal_dir, "std.txt")
-        sal_std = float(np.loadtxt(p))
-        try:
-            shutil.rmtree(sal_dir)
-        except OSError as e:
-            print(f"Error: {sal_dir} : {e.strerror}")
-            sys.exit(1)
-
-    states, advantages = run_episode(export=True)
+    states, advantages = run_episode()
 
     def plot_trace(trace, label, path):
         np.savetxt(Path(path.parent, f"{label}-trace.txt"), trace)
@@ -225,14 +188,10 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ARCH_JAVA_PATH = Path("/usr/lib/jvm/java-8-openjdk")
-    if ARCH_JAVA_PATH.is_dir():
-        os.environ["JAVA_HOME"] = str(ARCH_JAVA_PATH)
     parser = ArgumentParser()
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
     parser.add_argument("--conf", "-f", help="Path to configuration file")
     parser.add_argument("--seed", type=int, help="Seed for MineRL environment")
-    parser.add_argument("--saliency", default=False, action="store_true")
     parser.add_argument("--steps", "-s", type=int, default=1000)
     parser.add_argument("--load", default="models/rainbow")
 

@@ -21,7 +21,7 @@ sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 from rainbow import wrap_env, get_agent
 from rollout import save_obs
-from test_action_sequence import get_actions
+from rainbow_action_sequence import get_actions
 from utility.config import CONFIG
 
 # All the evaluations will be evaluated on MineRLObtainDiamond-v0 environment
