@@ -1,0 +1,26 @@
+{
+  "RAINBOW_HISTORY": 2,
+  "GAMMA": 0.93,
+  "START_EPSILON": 0.99,
+  "FINAL_EPSILON": 0.0,
+  "ALWAYS_KEYS": [
+    "forward"
+  ],
+  "REVERSE_KEYS": [],
+  "EXCLUDE_KEYS": [
+    "back",
+    "left",
+    "right",
+    "sneak",
+    "sprint"
+  ],
+  "FRAME_SKIP": 12,
+  "EXCLUDE_NOOP": true,
+  "MAX_CAMERA_RANGE": 1.875,
+  "ACTION_SPACE": [
+    "FWD_JUMP",
+    "ATT",
+    "LEFT",
+    "RIGHT"
+  ]
+}

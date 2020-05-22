@@ -2,3 +2,4 @@ chainerrl==0.7.0
 minerl==0.2.9
 scikit-image==0.16.2
 Pillow==6.2.1
+numpy==1.18.1
