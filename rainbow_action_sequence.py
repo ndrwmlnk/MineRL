@@ -16,6 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 from rainbow import wrap_env, get_agent
 from rollout import save_obs, OUT_DIR
 from utility.config import CONFIG
+from utility.imgutils import remove_depth
 
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
 
@@ -92,11 +93,17 @@ def main(args):
     info = {}
     netr = 0
     for i in range(len(actions)):
-        action = actions[i]
         if done or ("error" in info):
             break
 
-        agent.act(obs)
+        if args.rollout:
+            save_obs(agent, obs, i, out_dir)
+        else:
+            wrapped_env.render(mode="human")
+            time.sleep(0.5)
+
+        agent.act(remove_depth(obs, CONFIG["RAINBOW_HISTORY"]))
+        action = actions[i]
 
         if action == 1:
             wrapped_env.env.env.env.env.env._skip = 24
@@ -104,11 +111,6 @@ def main(args):
             wrapped_env.env.env.env.env.env._skip = CONFIG["FRAME_SKIP"]
 
         obs, reward, done, info = wrapped_env.step(action)
-        if args.rollout:
-            save_obs(agent, obs, i, out_dir)
-        else:
-            wrapped_env.render(mode="human")
-            time.sleep(0.5)
         if reward > 0:
             print(f"Received reward +{reward}")
         netr += reward
