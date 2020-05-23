@@ -154,12 +154,6 @@ def validate_agent(ep, agent, wrapped_env, args, forests):
             forest = args.seed
         val_ep_dir = Path(out_dir, str(i).zfill(2))
         netr, stats, steps = run_episode(agent, wrapped_env, forest, args.steps, val_ep_dir, test=True)
-        sal_dir = Path(".", "saliency")
-        try:
-            shutil.move(Path(sal_dir, "saliency-traces.txt"), Path(out_dir, "saliency-traces.txt"))
-            shutil.rmtree(sal_dir)
-        except OSError as e:
-            safe_log(f"Error: {sal_dir}: {e.strerror}", "ERROR")
         rewards = np.array([*rewards, (forest, netr)])
     out_dir.mkdir(parents=True, exist_ok=True)
     np.savetxt(Path(out_dir, "rewards.txt"), rewards)
