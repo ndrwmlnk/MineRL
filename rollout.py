@@ -71,7 +71,9 @@ def overlay_q_values(obs, values, pos=(0, 0)):
     return overlay_text(obs, text, pos, fill="")
 
 
-def save_obs(agent, obs_array, step, out_dir, size=(256, 256)):
+def save_obs(agent, obs, step, out_dir, size=(256, 256)):
+    if not isinstance(obs, np.ndarray):
+        obs = np.array(obs)
     rgb_dir = Path(out_dir, "rgb")
     depth_dir = Path(out_dir, "depth")
     rgb_dir.mkdir(parents=True, exist_ok=True)
@@ -85,7 +87,7 @@ def save_obs(agent, obs_array, step, out_dir, size=(256, 256)):
         if o.shape[0] == 4:
             save_image(get_depth(o), Path(depth_dir, name), size)
 
-    o = np.split(obs_array, CONFIG["RAINBOW_HISTORY"])[-1]
+    o = np.split(obs, CONFIG["RAINBOW_HISTORY"])[-1]
     name = f"{str(step).zfill(4)}.png"
     export_obs(o, name)
 
