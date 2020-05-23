@@ -1,3 +1,4 @@
+import numpy as np
 from PIL import Image
 
 
@@ -17,6 +18,13 @@ def chw_to_hwc(array):
         return array.transpose(1, 2, 0)
     else:
         return array
+
+
+def remove_depth(obs, history):
+    if np.split(np.array(obs), history)[-1].shape[0] == 4:
+        for j, frame in enumerate(obs._frames):
+            obs._frames[j] = frame[:-1]
+    return obs
 
 
 def get_depth(obs):
