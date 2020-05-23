@@ -3,7 +3,6 @@
 import minerl
 
 import os
-import shutil
 import sys
 from argparse import ArgumentParser
 from pathlib import Path
@@ -19,7 +18,7 @@ from PIL import Image, ImageDraw, ImageFont
 sys.path.append(os.path.abspath(os.path.join(__file__, os.pardir)))
 
 from rainbow import wrap_env, get_agent
-from utility.imgutils import save_image, observation_to_rgb, get_depth
+from utility.imgutils import save_image, observation_to_rgb, get_depth, remove_depth
 from utility.config import CONFIG
 
 MINERL_GYM_ENV = os.getenv('MINERL_GYM_ENV', 'MineRLTreechop-v0')
@@ -147,14 +146,9 @@ def main(args):
             if done or ("error" in info):
                 break
 
-            obs_array = np.array(obs)
-            if np.split(np.array(obs), CONFIG["RAINBOW_HISTORY"])[-1].shape[0] == 4:
-                for j, frame in enumerate(obs._frames):
-                    obs._frames[j] = frame[:-1]
+            action = agent.act(remove_depth(obs, CONFIG["RAINBOW_HISTORY"]))
 
-            action = agent.act(obs)
-
-            save_obs(agent, obs_array, i, out_dir)
+            save_obs(agent, np.array(obs), i, out_dir)
 
             states.append(cuda.to_cpu(agent.model.state))
             advantages.append(list(cuda.to_cpu(agent.model.advantage)))
