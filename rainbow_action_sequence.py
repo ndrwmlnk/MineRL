@@ -3,8 +3,8 @@
 import minerl
 
 import os
-import shutil
 import sys
+import time
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -60,8 +60,6 @@ def main(args):
         raise ValueError(f"Actions file {actions_file} is not a file!")
 
     actions = get_actions(actions_file)
-    if len(actions) < args.steps:
-        raise ValueError(f"{len(actions)} actions specified for {args.steps} steps in {actions_file}")
     print(f"{len(actions)} actions: {actions}")
 
     core_env = gym.make(MINERL_GYM_ENV)
@@ -93,14 +91,12 @@ def main(args):
     done = False
     info = {}
     netr = 0
-    import time
-    for i in range(args.steps):
+    for i in range(len(actions)):
         action = actions[i]
         if done or ("error" in info):
             break
 
         agent.act(obs)
-        last_action = CONFIG["ACTION_SPACE"][action]
 
         if action == 1:
             wrapped_env.env.env.env.env.env._skip = 24
@@ -112,16 +108,10 @@ def main(args):
             save_obs(agent, obs, i, out_dir)
         else:
             wrapped_env.render(mode="human")
-        time.sleep(1.0)
+            time.sleep(0.5)
         if reward > 0:
             print(f"Received reward +{reward}")
         netr += reward
-
-    sal_dir = Path(".", "saliency")
-    try:
-        shutil.rmtree(sal_dir)
-    except OSError as e:
-        print(f"Error: {sal_dir} : {e.strerror}")
 
     agent.stop_episode()
     wrapped_env.close()
@@ -136,8 +126,7 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
     parser.add_argument("--conf", "-f", help="Path to configuration file")
     parser.add_argument("--rollout", default=False, action="store_true")
-    parser.add_argument("--seed", type=int, default=420, help="Environment seed")
-    parser.add_argument("--steps", "-s", type=int, default=32, help="Number of actions taken per episode")
+    parser.add_argument("--seed", "-s", type=int, default=420, help="Environment seed")
     parser.add_argument("--actions")
 
     main(parser.parse_args())
