@@ -188,7 +188,7 @@ if __name__ == "__main__":
     parser.add_argument("--gpu", default=-1, action="store_const", const=0)
     parser.add_argument("--conf", "-f", help="Path to configuration file")
     parser.add_argument("--seed", type=int, help="Seed for MineRL environment")
-    parser.add_argument("--steps", "-s", type=int, default=1000)
-    parser.add_argument("--load", default="models/rainbow")
+    parser.add_argument("--steps", "-s", type=int, default=1000 , help="Number of frames to record. Defaults to 1000.")
+    parser.add_argument("--load", default="models/rainbow", help="Path to weights")
 
     main(parser.parse_args())

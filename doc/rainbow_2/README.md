@@ -97,7 +97,7 @@ git checkout rainbow2
 python test_rainbow.py -l model/rainbow/rainbow_2
 ```
 
-### Keyboard agent
+## Keyboard agent
 
 With this script you can play in the environment as if you were the agent by running this command:
 
@@ -113,3 +113,55 @@ The actions keymaps are the following:
 3 -> Left
 4 -> Right
 ```
+
+## Rollouts
+
+With `rollout.py` you can record rollouts of arbitrary length from a Rainbow agent `config.json`.
+
+```shell script
+python rollout.py -h
+usage: rollout.py [-h] [--gpu] [--conf CONF] [--seed SEED] [--steps STEPS]
+                  [--load LOAD]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --gpu
+  --conf CONF, -f CONF  Path to configuration file
+  --seed SEED           Seed for MineRL environment
+  --steps STEPS, -s STEPS
+                        Number of frames to record. Defaults to 1000.
+  --load LOAD           Path to weights
+```
+
+For example, if you want to record `500` frames of the Rainbow2 agent in the `420` environment, simply run:
+
+```shell script
+python rollout.py -s 420 -l models/rainbow/rainbow_2 -s 500
+``` 
+
+### Depth rollout
+
+You can record depth episode rollouts trough the `rollout.py` script. You only have to activate depth frames from the Malmo environment.
+
+Since this is not a supported feature from `minerl` we have to directly edit the source code of the Malmo environment. Find the root of your virtualenv (`~/venv`in this example) and edit the following file:
+
+```shell script
+gedit ~/venv/lib/python3.7/site-packages/minerl/env/missions/treechop.xml
+```
+
+At line `57` you should find this XML element:
+
+```xml
+<VideoProducer want_depth="false">
+    <Width>64</Width>
+    <Height>64</Height>
+</VideoProducer>
+```
+
+To enable depth rollouts simply change the `want_depth` attribute to `"true"`. The rollout script will automatically recognize depth frames and will export the inside the `depth` directory.
+
+### Here be Dragons!
+
+Enabling depth changes input size from `64x64x3` to `64x64x4` so if you change the `treechop.xml` file to create also depth frames and then try to run `train_rainbow.py` or `test_rainbow.py`, they **will** fail.
+
+To run them without changes, simply restore the value of the `want_depth` attribute to `"false"`.
