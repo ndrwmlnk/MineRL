@@ -136,7 +136,7 @@ optional arguments:
 For example, if you want to record `500` frames of the Rainbow2 agent in the `420` environment, simply run:
 
 ```shell script
-python rollout.py -s 420 -l models/rainbow/rainbow_2 -s 500
+python rollout.py --seed 420 -l models/rainbow/rainbow_2 -s 500
 ``` 
 
 ### Depth rollout
