@@ -143,7 +143,7 @@ python rollout.py -s 420 -l models/rainbow/rainbow_2 -s 500
 
 You can record depth episode rollouts trough the `rollout.py` script. You only have to activate depth frames from the Malmo environment.
 
-Since this is not a supported feature from `minerl` we have to directly edit the source code of the Malmo environment. Find the root of your virtualenv (`~/venv`in this example) and edit the following file:
+Since this is not a supported feature from `minerl` you have to directly edit the declaration of the environment. Find the root of your Python virtualenv (`~/venv`in this example) and edit the following file:
 
 ```shell script
 gedit ~/venv/lib/python3.7/site-packages/minerl/env/missions/treechop.xml
@@ -158,10 +158,19 @@ At line `57` you should find this XML element:
 </VideoProducer>
 ```
 
-To enable depth rollouts simply change the `want_depth` attribute to `"true"`. The rollout script will automatically recognize depth frames and will export the inside the `depth` directory.
+To enable depth rollouts simply change the `want_depth` attribute to `"true"`., like this:
+
+```xml
+<VideoProducer want_depth="true">
+    <Width>64</Width>
+    <Height>64</Height>
+</VideoProducer>
+```
+
+The rollout script will automatically recognize depth frames and will export them inside the `depth` directory.
 
 ### Here be Dragons!
 
-Enabling depth changes input size from `64x64x3` to `64x64x4` so if you change the `treechop.xml` file to create also depth frames and then try to run `train_rainbow.py` or `test_rainbow.py`, they **will** fail.
+When you enable depth frames, you are changing every single frame size from `64x64x3` to `64x64x4` so if you change the `treechop.xml` file to create also depth frames and then try to run `train_rainbow.py` or `test_rainbow.py`, they _**will**_ fail.
 
 To run them without changes, simply restore the value of the `want_depth` attribute to `"false"`.
